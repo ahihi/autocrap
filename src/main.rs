@@ -1,10 +1,8 @@
 use std::{
-    collections::HashMap,
     error::Error,
     fs::File,
     io::BufReader,
     net::{SocketAddrV4, UdpSocket},
-    str::FromStr,
     thread,
     time::Duration,
     vec::Vec
@@ -14,18 +12,16 @@ use rosc::encoder;
 use rosc::{OscMessage, OscPacket, OscType};
 
 use rusb::{
-    ConfigDescriptor, Context, Device, Direction, DeviceDescriptor, DeviceHandle, DeviceList, EndpointDescriptor,
-    InterfaceDescriptor, Language, Speed, TransferType, UsbContext,
+    Context, Device, Direction, DeviceDescriptor, DeviceHandle,
+    TransferType, UsbContext,
 };
 
 use serde::{Serialize, Deserialize};
 use serde_json;
 
-use usb_ids::{self, FromId};
-
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const default_timeout: Duration = Duration::from_millis(1000);
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
 
 #[derive(Clone, Copy, Debug)]
 struct Endpoint {
@@ -69,7 +65,7 @@ impl CtrlNum {
         match *self {
             CtrlNum::Single(num) if i == 0 =>
                 Some(num),
-            CtrlNum::Range(lo, hi) if 0 <= i && i <= hi-lo =>
+            CtrlNum::Range(lo, hi) if i <= hi-lo =>
                 Some(lo + i),
             CtrlNum::Pair(_, _) =>
                 unimplemented!(),
@@ -227,9 +223,7 @@ fn run() -> Result<()> {
         Some((mut device, device_desc, mut handle)) => {
             handle.reset().unwrap();
 
-            let buttons: Vec<u8> = (0x70u8 .. 0x86u8).collect();
-            let timeout = Duration::from_secs(1);
-            let languages = handle.read_languages(timeout).unwrap();
+            let languages = handle.read_languages(DEFAULT_TIMEOUT).unwrap();
 
             println!("active configuration: {}", handle.active_configuration().unwrap());
             println!("languages: {:?}", languages);
@@ -240,19 +234,19 @@ fn run() -> Result<()> {
                 println!(
                     "manufacturer: {:?}",
                     handle
-                        .read_manufacturer_string(language, &device_desc, timeout)
+                        .read_manufacturer_string(language, &device_desc, DEFAULT_TIMEOUT)
                         .ok()
                 );
                 println!(
                     "product: {:?}",
                     handle
-                        .read_product_string(language, &device_desc, timeout)
+                        .read_product_string(language, &device_desc, DEFAULT_TIMEOUT)
                         .ok()
                 );
                 println!(
                     "serial number: {:?}",
                     handle
-                        .read_serial_number_string(language, &device_desc, timeout)
+                        .read_serial_number_string(language, &device_desc, DEFAULT_TIMEOUT)
                         .ok()
                 );
             }
@@ -280,7 +274,7 @@ fn run() -> Result<()> {
 
                 writer_thread.join().unwrap();
 
-                // handle.write_interrupt(ctrl_out_endpoint.address, &[0x00, 0x00], default_timeout)?;
+                // handle.write_interrupt(ctrl_out_endpoint.address, &[0x00, 0x00], DEFAULT_TIMEOUT)?;
             });
         }
         None => println!("could not find device {:04x}:{:04x}", config.vendor_id, config.product_id),
@@ -290,7 +284,7 @@ fn run() -> Result<()> {
 }
 
 fn write_init<T: UsbContext>(handle: &mut DeviceHandle<T>, address: u8) -> Result<()> {
-    let write = |bytes| handle.write_interrupt(address, bytes, default_timeout);
+    let write = |bytes| handle.write_interrupt(address, bytes, DEFAULT_TIMEOUT);
 
     // b0 looks to be a "start" byte, 00 00 is reset (all leds off)
     write(&[0xb0, 0x00, 0x00])?;
@@ -323,48 +317,6 @@ fn open_device<T: UsbContext>(
     }
 
     None
-}
-
-fn find_endpoints<T: UsbContext>(
-    device: &mut Device<T>,
-    device_desc: &DeviceDescriptor,
-) -> Vec<(u8, u8, u8, u8, TransferType, Direction)> {
-    let mut endpoints = Vec::new();
-
-    for n in 0..device_desc.num_configurations() {
-        let config_desc = match device.config_descriptor(n) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        for interface in config_desc.interfaces() {
-            for interface_desc in interface.descriptors() {
-                for endpoint_desc in interface_desc.endpoint_descriptors() {
-                    endpoints.push((
-                        config_desc.number(),
-                        interface_desc.interface_number(),
-                        interface_desc.setting_number(),
-                        endpoint_desc.address(),
-                        endpoint_desc.transfer_type(),
-                        endpoint_desc.direction()
-                    ));
-                    // if endpoint_desc.direction() == Direction::In
-                    //     && endpoint_desc.transfer_type() == transfer_type
-                    // {
-
-                    //     return Some(Endpoint {
-                    //         config: config_desc.number(),
-                    //         iface: interface_desc.interface_number(),
-                    //         setting: interface_desc.setting_number(),
-                    //         address: endpoint_desc.address(),
-                    //     });
-                    // }
-                }
-            }
-        }
-    }
-
-    endpoints
 }
 
 fn find_endpoint<T: UsbContext>(
@@ -401,54 +353,6 @@ fn find_endpoint<T: UsbContext>(
     None
 }
 
-fn read_endpoint<T: UsbContext>(
-    handle: &mut DeviceHandle<T>,
-    endpoint: Endpoint,
-    transfer_type: TransferType,
-) {
-    println!("Reading from endpoint: {:?}", endpoint);
-
-    let has_kernel_driver = match handle.kernel_driver_active(endpoint.iface) {
-        Ok(true) => {
-            handle.detach_kernel_driver(endpoint.iface).ok();
-            true
-        }
-        _ => false,
-    };
-
-    println!(" - kernel driver? {}", has_kernel_driver);
-
-    match configure_endpoint(handle, &endpoint) {
-        Ok(_) => {
-            let mut buf = [0; 256];
-            let timeout = Duration::from_secs(1);
-
-            match transfer_type {
-                TransferType::Interrupt => {
-                    match handle.read_interrupt(endpoint.address, &mut buf, timeout) {
-                        Ok(len) => {
-                            println!(" - read: {:?}", &buf[..len]);
-                        }
-                        Err(err) => println!("could not read from endpoint: {}", err),
-                    }
-                }
-                TransferType::Bulk => match handle.read_bulk(endpoint.address, &mut buf, timeout) {
-                    Ok(len) => {
-                        println!(" - read: {:?}", &buf[..len]);
-                    }
-                    Err(err) => println!("could not read from endpoint: {}", err),
-                },
-                _ => (),
-            }
-        }
-        Err(err) => println!("could not configure endpoint: {}", err),
-    }
-
-    if has_kernel_driver {
-        handle.attach_kernel_driver(endpoint.iface).ok();
-    }
-}
-
 fn configure_endpoint<T: UsbContext>(
     handle: &mut DeviceHandle<T>,
     endpoint: &Endpoint,
@@ -468,11 +372,11 @@ fn run_reader<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint
 
     let mut all_bytes = [0u8; 8];
 
-    let mut xfader_hi = 0x00u8;
-    let mut xfader_lo = 0x00u8;
+    // let mut xfader_hi = 0x00u8;
+    // let mut xfader_lo = 0x00u8;
 
     loop {
-        if let Ok(num_bytes) = handle.read_interrupt(endpoint.address, &mut all_bytes, default_timeout) {
+        if let Ok(num_bytes) = handle.read_interrupt(endpoint.address, &mut all_bytes, DEFAULT_TIMEOUT) {
             // println!("read({:?}): {:02x?}", num_bytes, &all_bytes[..num_bytes]);
             let mut i = 0;
             while i+1 < num_bytes {
@@ -543,7 +447,7 @@ fn run_writer<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint
                         };
 
                         println!("write: {:02x?}", osc_match_data.ctrl_data);
-                        handle.write_interrupt(endpoint.address, &osc_match_data.ctrl_data, default_timeout)?;
+                        handle.write_interrupt(endpoint.address, &osc_match_data.ctrl_data, DEFAULT_TIMEOUT)?;
                     }
                     OscPacket::Bundle(bundle) => {
                         println!("OSC Bundle: {:?}", bundle);
