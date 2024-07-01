@@ -276,39 +276,7 @@ fn run() -> Result<()> {
 
             thread::scope(|s| {
                 let writer_thread = s.spawn(|| {
-                    let sock = UdpSocket::bind(config.osc_in_addr).unwrap();
-                    println!("listening to {}", config.osc_in_addr);
-
-                    let mut buf = [0u8; rosc::decoder::MTU];
-                    loop {
-                        match sock.recv_from(&mut buf) {
-                            Ok((size, addr)) => {
-                                let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
-                                match packet {
-                                    OscPacket::Message(msg) => {
-                                        let write = |bytes: &[u8]| {
-                                            println!("write: {:02x?}", bytes);
-                                            handle.write_interrupt(ctrl_out_endpoint.address, bytes, default_timeout).unwrap();
-                                        };
-
-                                        let Some(osc_match_data) = config.match_osc(&msg) else {
-                                            println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
-                                            continue;
-                                        };
-
-                                        write(&osc_match_data.ctrl_data);
-                                    }
-                                    OscPacket::Bundle(bundle) => {
-                                        println!("OSC Bundle: {:?}", bundle);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                println!("error receiving from socket: {}", e);
-                                break;
-                            }
-                        }
-                    }
+                    run_writer(&config, &handle, &ctrl_out_endpoint);
                 });
 
                 let mut all_bytes = [0u8; 8];
@@ -672,4 +640,38 @@ fn configure_endpoint<T: UsbContext>(
 
 fn float_to_7bit(val: f32) -> u8 {
     (val.max(0.0).min(1.0) * 127.0).round() as u8
+}
+
+fn run_writer<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint: &Endpoint) -> Result<()> {
+    let sock = UdpSocket::bind(config.osc_in_addr)?;
+    println!("listening to {}", config.osc_in_addr);
+
+    let mut buf = [0u8; rosc::decoder::MTU];
+    loop {
+        match sock.recv_from(&mut buf) {
+            Ok((size, addr)) => {
+                let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
+                match packet {
+                    OscPacket::Message(msg) => {
+                        let Some(osc_match_data) = config.match_osc(&msg) else {
+                            println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
+                            continue;
+                        };
+
+                        println!("write: {:02x?}", osc_match_data.ctrl_data);
+                        handle.write_interrupt(endpoint.address, &osc_match_data.ctrl_data, default_timeout)?;
+                    }
+                    OscPacket::Bundle(bundle) => {
+                        println!("OSC Bundle: {:?}", bundle);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("error receiving from socket: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
