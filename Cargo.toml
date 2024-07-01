@@ -1,0 +1,11 @@
+[package]
+name = "autocrap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rosc = "~0.10"
+rusb = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+usb-ids = "1.2024.3"
