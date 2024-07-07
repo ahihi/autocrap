@@ -19,6 +19,13 @@ use rusb::{
 use serde::{Serialize, Deserialize};
 use serde_json;
 
+mod autocrap;
+
+use autocrap::{
+    config::{CtrlKind, CtrlNum, Config, Mapping, MidiKind},
+    interpreter::{Interpreter}
+};
+
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -31,180 +38,6 @@ struct Endpoint {
     address: u8,
     transfer_type: TransferType,
     direction: Direction,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-enum CtrlNum {
-    Single(u8),
-    Range(u8, u8),
-    Pair(u8, u8)
-}
-
-impl CtrlNum {
-    fn match_num(&self, num: u8) -> Option<u8> {
-        match *self {
-            CtrlNum::Single(n) if num == n =>
-                Some(0),
-            CtrlNum::Range(lo, hi) if lo <= num && num <= hi =>
-                Some(num - lo),
-            // TODO: Pair
-            _ =>
-                None
-        }
-    }
-
-    fn range_size(&self) -> u8 {
-        match *self {
-            CtrlNum::Single(_) => 1,
-            CtrlNum::Range(lo, hi) => hi - lo + 1,
-            _ => unimplemented!()
-        }
-    }
-
-    fn index_to_num(&self, i: u8) -> Option<u8> {
-        match *self {
-            CtrlNum::Single(num) if i == 0 =>
-                Some(num),
-            CtrlNum::Range(lo, hi) if i <= hi-lo =>
-                Some(lo + i),
-            CtrlNum::Pair(_, _) =>
-                unimplemented!(),
-            _ => None
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-enum CtrlKind {
-    Button,
-    EightBit,
-    Relative,
-}
-
-impl CtrlKind {
-    fn ctrl_to_osc(&self, val: u8) -> Vec<OscType> {
-        match self {
-            CtrlKind::Button =>
-                vec![OscType::Float(if val == 0x7f { 1.0 } else { 0.0 })],
-            CtrlKind::Relative =>
-                vec![OscType::Float(if val < 0x40 { val as f32 } else { val as f32 - 128.0 })],
-            _ => unimplemented!()
-        }
-    }
-
-    fn osc_to_ctrl(&self, args: &[OscType]) -> Option<u8> {
-        if args.len() < 1 {
-            return None;
-        }
-
-        let OscType::Float(val) = args[0] else {
-            return None;
-        };
-
-        match self {
-            CtrlKind::Button =>
-                Some(float_to_7bit(val)),
-            CtrlKind::Relative =>
-                Some(float_to_7bit(val)),
-            _ => unimplemented!()
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-enum MidiKind {
-    Cc,
-    CoarseFine,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Mapping {
-    name: String,
-    ctrl_in_num: Option<CtrlNum>,
-    ctrl_out_num: Option<CtrlNum>,
-    ctrl_kind: CtrlKind,
-    midi_kind: MidiKind,
-    midi_num: CtrlNum
-}
-
-impl Mapping {
-    fn osc_addr(&self, i: u8) -> String {
-        format!("/{}", self.name.replace("{i}", &i.to_string()))
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Config {
-    vendor_id: u16,
-    product_id: u16,
-    in_endpoint: u8,
-    out_endpoint: u8,
-    host_addr: SocketAddrV4,
-    osc_out_addr: SocketAddrV4,
-    osc_in_addr: SocketAddrV4,
-    mappings: Vec<Mapping>
-}
-
-impl Config {
-    fn match_ctrl(&self, num: u8, val: u8) -> Option<CtrlMatchData> {
-        for mapping in self.mappings.iter() {
-            let Some(ctrl_in_num) = mapping.ctrl_in_num else {
-                continue;
-            };
-
-            let Some(i) = ctrl_in_num.match_num(num) else {
-                continue;
-            };
-
-            return Some(CtrlMatchData {
-                osc_addr: mapping.osc_addr(i),
-                osc_args: mapping.ctrl_kind.ctrl_to_osc(val)
-            })
-        }
-
-        None
-    }
-
-    fn match_osc(&self, msg: &OscMessage) -> Option<OscMatchData> {
-        for mapping in self.mappings.iter() {
-            let Some(ctrl_out_num) = mapping.ctrl_out_num else {
-                continue;
-            };
-
-            for i in 0..ctrl_out_num.range_size() {
-                let addr = mapping.osc_addr(i);
-
-                if addr != msg.addr {
-                    continue;
-                }
-
-                let Some(num) = ctrl_out_num.index_to_num(i) else {
-                    continue;
-                };
-
-                let Some(val) = mapping.ctrl_kind.osc_to_ctrl(&msg.args) else {
-                    continue;
-                };
-
-                return Some(OscMatchData {
-                    ctrl_data: vec![num, val]
-                });
-            }
-        }
-
-        None
-    }
-}
-
-#[derive(Clone, Debug)]
-struct CtrlMatchData {
-    osc_addr: String,
-    osc_args: Vec<OscType>,
-}
-
-#[derive(Clone, Debug)]
-struct OscMatchData {
-    ctrl_data: Vec<u8>,
 }
 
 fn main() {
@@ -262,6 +95,8 @@ fn run() -> Result<()> {
             configure_endpoint(&mut handle, &ctrl_in_endpoint).unwrap();
             configure_endpoint(&mut handle, &ctrl_out_endpoint).unwrap();
 
+            let interpreter = Interpreter::new(&config);
+
             write_init(&mut handle, ctrl_out_endpoint.address).unwrap();
 
             thread::scope(|s| {
@@ -269,8 +104,7 @@ fn run() -> Result<()> {
                     run_writer(&config, &handle, &ctrl_out_endpoint).unwrap();
                 });
 
-
-                run_reader(&config, &handle, &ctrl_in_endpoint).unwrap();
+                run_reader(&config, &interpreter, &handle, &ctrl_in_endpoint).unwrap();
 
                 writer_thread.join().unwrap();
 
@@ -363,11 +197,7 @@ fn configure_endpoint<T: UsbContext>(
     Ok(())
 }
 
-fn float_to_7bit(val: f32) -> u8 {
-    (val.max(0.0).min(1.0) * 127.0).round() as u8
-}
-
-fn run_reader<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint: &Endpoint) -> Result<()> {
+fn run_reader<T: UsbContext>(config: &Config, interpreter: &Interpreter, handle: &DeviceHandle<T>, endpoint: &Endpoint) -> Result<()> {
     let sock = UdpSocket::bind(config.host_addr)?;
 
     let mut all_bytes = [0u8; 8];
@@ -393,12 +223,22 @@ fn run_reader<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint
                 let num = bytes[0];
                 let val = bytes[1];
 
-                let addr: String;
-                let args: Vec<OscType>;
+                if let Some(response) = interpreter.handle_ctrl(num, val) {
+                    if let Some((addr, args)) = response.osc {
+                        let msg = OscPacket::Message(OscMessage {
+                            addr: addr, // TODO: dont allocate every time
+                            args: args,
+                        });
+                        println!("osc: {:?}", msg);
+                        let msg_buf = encoder::encode(&msg)?;
 
-                if let Some(data) = config.match_ctrl(num, val) {
-                    addr = data.osc_addr;
-                    args = data.osc_args;
+                        sock.send_to(&msg_buf, config.osc_out_addr)?;
+                    }
+
+                    if let Some(out_bytes) = response.ctrl {
+                        // TODO: gather, then send to writer after while loop
+                        println!("ctrl: {:02x?}", out_bytes);
+                    }
                 } else {
                     println!("unhandled data: {:02x?}", bytes);
                     continue;
@@ -415,15 +255,6 @@ fn run_reader<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint
 
                 //     addr = "/xfader".to_string();
                 //     args = vec![OscType::Float(val8 as f32 / 255.0)];
-
-                let msg = OscPacket::Message(OscMessage {
-                    addr: addr.to_string(), // TODO: dont allocate every time
-                    args: args,
-                });
-                // println!("osc: {:?}", msg);
-                let msg_buf = encoder::encode(&msg)?;
-
-                sock.send_to(&msg_buf, config.osc_out_addr)?;
             }
         }
     }
@@ -441,13 +272,13 @@ fn run_writer<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
                 match packet {
                     OscPacket::Message(msg) => {
-                        let Some(osc_match_data) = config.match_osc(&msg) else {
-                            println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
-                            continue;
-                        };
+                        // let Some(osc_match_data) = config.match_osc(&msg) else {
+                        //     println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
+                        //     continue;
+                        // };
 
-                        println!("write: {:02x?}", osc_match_data.ctrl_data);
-                        handle.write_interrupt(endpoint.address, &osc_match_data.ctrl_data, DEFAULT_TIMEOUT)?;
+                        // println!("write: {:02x?}", osc_match_data.ctrl_data);
+                        // handle.write_interrupt(endpoint.address, &osc_match_data.ctrl_data, DEFAULT_TIMEOUT)?;
                     }
                     OscPacket::Bundle(bundle) => {
                         println!("OSC Bundle: {:?}", bundle);

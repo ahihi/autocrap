@@ -9,55 +9,78 @@
   "mappings": [
     {
       "name": "knob{i}",
-      "ctrl_in_num": {"Range": [64, 71]},
-      "ctrl_out_num": {"Range": [64, 71]},
+      "numbering": {"Range": {
+        "ctrl_in": [64, 71],
+        "ctrl_out": [64, 71],
+        "midi": [0, 7]
+      }},
       "ctrl_kind": "Relative",
       "midi_kind": "Cc",
-      "midi_num": {"Range": [0, 7]}
+      "mode": "Accumulate"
     },
     {
       "name": "knobTouch{i}",
-      "ctrl_in_num": {"Range": [96, 104]},
-      "ctrl_kind": "Button",
+      "numbering": {"Range": {
+        "ctrl_in": [96, 104],
+        "mini": [0, 7]
+      }},
+      "ctrl_kind": "OnOff",
       "midi_kind": "Cc",
-      "midi_num": {"Range": [0, 7]}
+      "mode": "Momentary"
     },
     {
       "name": "button{i}",
+      "numbering": {"Range": {
+        "ctrl_in": [112, 127],
+        "ctrl_out": [112, 127],
+        "midi": [0, 15]
+      }},
       "ctrl_in_num": {"Range": [112, 127]},
       "ctrl_out_num": {"Range": [112, 127]},
-      "ctrl_kind": "Button",
+      "ctrl_kind": "OnOff",
       "midi_kind": "Cc",
-      "midi_num": {"Range": [0, 7]}
+      "mode": "Toggle"
     },
     {
       "name": "xfader",
-      "ctrl_in_num": {"Pair": [72, 73]},
+      "numbering": {"Single": {
+        "ctrl_in_sequence": [72, 73],
+        "midi": 20
+      }},
       "ctrl_kind": "EightBit",
       "midi_kind": "CoarseFine",
-      "midi_num": {"Single": 20}
+      "mode": "Raw"
     },
     {
       "name": "xfaderTouch",
-      "ctrl_in_num": {"Single": 83},
-      "ctrl_kind": "Button",
+      "numbering": {"Single": {
+        "ctrl_in": 83,
+        "midi": 20
+      }},
+      "ctrl_kind": "OnOff",
       "midi_kind": "Cc",
-      "midi_num": {"Single": 20}
+      "mode": "Momentary"
     },
     {
       "name": "speedDial",
-      "ctrl_in_num": {"Single": 74},
-      "ctrl_out_num": {"Single": 80},
+      "numbering": {"Single": {
+        "ctrl_in": 74,
+        "ctrl_out": 80,
+        "midi": 10
+      }},
       "ctrl_kind": "Relative",
       "midi_kind": "Cc",
-      "midi_num": {"Single": 10}
+      "mode": "Accumulate"
     },
     {
       "name": "speedDialButton",
-      "ctrl_in_num": {"Single": 81},
-      "ctrl_kind": "Button",
+      "numbering": {"Single": {
+        "ctrl_in": 81,
+        "midi": 10
+      }},
+      "ctrl_kind": "OnOff",
       "midi_kind": "Cc",
-      "midi_num": {"Single": 10}
+      "mode": "Momentary"
     }
   ]
 }
