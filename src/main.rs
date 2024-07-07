@@ -26,7 +26,7 @@ mod autocrap;
 
 use autocrap::{
     config::{Config},
-    interpreter::{Interpreter}
+    interpreter::{Interpreter, CtrlResponse, OscResponse}
 };
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -217,9 +217,6 @@ fn run_reader<T: UsbContext>(
 
     let mut all_bytes = [0u8; 8];
 
-    // let mut xfader_hi = 0x00u8;
-    // let mut xfader_lo = 0x00u8;
-
     loop {
         if let Ok(num_bytes) = handle.read_interrupt(endpoint.address, &mut all_bytes, DEFAULT_TIMEOUT) {
             // println!("read({:?}): {:02x?}", num_bytes, &all_bytes[..num_bytes]);
@@ -239,7 +236,7 @@ fn run_reader<T: UsbContext>(
                 let val = bytes[1];
 
                 if let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) {
-                    if let Some((addr, args)) = response.osc {
+                    if let Some(OscResponse { addr, args }) = response.osc {
                         let msg = OscPacket::Message(OscMessage {
                             addr: addr,
                             args: args,
@@ -250,9 +247,9 @@ fn run_reader<T: UsbContext>(
                         sock.send_to(&msg_buf, config.osc_out_addr)?;
                     }
 
-                    if let Some(out_bytes) = response.ctrl {
-                        println!("ctrl: {:02x?}", out_bytes);
-                        ctrl_tx.send(out_bytes)?;
+                    if let Some(CtrlResponse { data }) = response.ctrl {
+                        println!("ctrl: {:02x?}", data);
+                        ctrl_tx.send(data)?;
                     }
                 } else {
                     println!("unhandled data: {:02x?}", bytes);
@@ -291,16 +288,16 @@ fn run_osc_receiver(
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
                 match packet {
                     OscPacket::Message(msg) => {
-                        let Some(response) = interpreter.read().unwrap().handle_osc(&msg) else {
+                        let Some(response) = interpreter.write().unwrap().handle_osc(&msg) else {
                             println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
                             continue;
                         };
 
-                        let Some(ctrl_out) = response.ctrl else {
+                        let Some(CtrlResponse { data }) = response.ctrl else {
                             continue;
                         };
 
-                        ctrl_tx.send(ctrl_out)?
+                        ctrl_tx.send(data)?
                     }
                     OscPacket::Bundle(bundle) => {
                         println!("OSC Bundle: {:?}", bundle);
