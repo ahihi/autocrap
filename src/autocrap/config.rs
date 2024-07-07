@@ -26,14 +26,30 @@ pub enum CtrlKind {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum MidiKind {
     Cc,
-    CoarseFine,
+    // CoarseFine,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Mode {
     Raw,
     Accumulate,
-    
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct MidiSpec {
+    pub channel: u8,
+    pub kind: MidiKind,
+    pub num: u8,
+}
+
+impl MidiSpec {
+    pub fn index(&self, i: u8) -> MidiSpec {
+        MidiSpec {
+            channel: self.channel,
+            kind: self.kind,
+            num: self.num + i
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,8 +59,7 @@ pub struct Mapping {
     pub ctrl_in_num: Option<u8>,
     pub ctrl_out_num: Option<u8>,
     pub ctrl_kind: CtrlKind,
-    pub midi_num: Option<u8>,
-    pub midi_kind: MidiKind
+    pub midi: Option<MidiSpec>,
 }
 
 impl Mapping {
@@ -55,8 +70,7 @@ impl Mapping {
             ctrl_in_num: self.ctrl_in_num.map(|n| n+i),
             ctrl_out_num: self.ctrl_out_num.map(|n| n+i),
             ctrl_kind: self.ctrl_kind,
-            midi_num: self.midi_num.map(|n| n+i),
-            midi_kind: self.midi_kind
+            midi: self.midi.map(|m| m.index(i)),
         }
     }
 
@@ -97,8 +111,22 @@ pub struct OscInterface {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MidiPort {
+    Index(usize),
+    Name(String),
+    Virtual(String),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MidiInterface {
+    pub client_name: String,
+    pub out_port: MidiPort
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Interface {
-    Osc(OscInterface)
+    Osc(OscInterface),
+    Midi(MidiInterface)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -12,6 +12,11 @@ use std::{
     vec::Vec
 };
 
+use midir::{
+    MidiInput, MidiInputPort,
+    MidiOutput, MidiOutputPort,
+    os::unix::{VirtualOutput}
+};
 use rosc::encoder;
 use rosc::{OscMessage, OscPacket};
 
@@ -25,8 +30,8 @@ use serde_json;
 mod autocrap;
 
 use autocrap::{
-    config::{Config, Interface, OscInterface},
-    interpreter::{Interpreter, CtrlResponse, OscResponse}
+    config::{Config, Interface, MidiInterface, MidiPort, OscInterface},
+    interpreter::{Interpreter, CtrlResponse, MidiResponse, OscResponse}
 };
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -48,7 +53,7 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    let file = File::open("nocturn-config.json")?;
+    let file = File::open("nocturn-midi.json")?;
     let reader = BufReader::new(file);
     let config: Config = serde_json::from_reader(reader)?;
     println!("config: {:?}", config);
@@ -213,58 +218,86 @@ fn run_reader<T: UsbContext>(
     endpoint: &Endpoint,
     ctrl_tx: mpsc::Sender<Vec<u8>>
 ) -> Result<()> {
-    let osc = match config.interface {
-        Interface::Osc(OscInterface { host_addr, out_addr, .. }) => {
-            let sock = UdpSocket::bind(host_addr)?;
-            Some((sock, out_addr))
+    let osc = if let Interface::Osc(OscInterface { host_addr, out_addr, .. }) = config.interface {
+        let sock = UdpSocket::bind(host_addr)?;
+        Some((sock, out_addr))
+    } else {
+        None
+    };
+
+    let mut midi = if let Interface::Midi(ref interface) = config.interface {
+        let client_name = &interface.client_name;
+        let midi_out = MidiOutput::new(client_name)?;
+        match interface.out_port {
+            MidiPort::Index(index) =>
+                Some(midi_out.ports().remove(index))
+                .map(|p| (midi_out.port_name(&p).unwrap(), midi_out.connect(&p, client_name).unwrap())),
+            MidiPort::Name(ref name) =>
+                midi_out.ports().into_iter().find(|p| &midi_out.port_name(&p).unwrap() == name)
+                .map(|p| (midi_out.port_name(&p).unwrap(), midi_out.connect(&p, client_name).unwrap())),
+            MidiPort::Virtual(ref name) =>
+                Some((client_name.to_string(), midi_out.create_virtual(client_name).unwrap()))
         }
+    } else {
+        None
     };
 
     let mut all_bytes = [0u8; 8];
 
     loop {
-        if let Ok(num_bytes) = handle.read_interrupt(endpoint.address, &mut all_bytes, DEFAULT_TIMEOUT) {
-            // println!("read({:?}): {:02x?}", num_bytes, &all_bytes[..num_bytes]);
-            let mut i = 0;
-            while i+1 < num_bytes {
-                if all_bytes[i] == 0xb0 {
-                    i += 1;
-                    continue
+        let Ok(num_bytes) =
+            handle.read_interrupt(endpoint.address, &mut all_bytes, DEFAULT_TIMEOUT)
+        else {
+            continue;
+        };
+
+        // println!("read({:?}): {:02x?}", num_bytes, &all_bytes[..num_bytes]);
+        let mut i = 0;
+        while i+1 < num_bytes {
+            if all_bytes[i] == 0xb0 {
+                i += 1;
+                continue
+            }
+
+            let bytes = &all_bytes[i..i+2];
+            i += 2;
+
+            // println!("bytes: {:02x?}", bytes);
+
+            let num = bytes[0];
+            let val = bytes[1];
+
+            let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) else {
+                println!("unhandled data: {:02x?}", bytes);
+                continue;
+            };
+
+            if let Some((sock, out_addr)) = osc.as_ref() {
+                if let Some(OscResponse { addr, args }) = response.osc {
+                    let msg = OscPacket::Message(OscMessage {
+                        addr: addr,
+                        args: args,
+                    });
+                    println!("osc: {:?}", msg);
+                    let msg_buf = encoder::encode(&msg)?;
+
+                    sock.send_to(&msg_buf, out_addr)?;
                 }
+            }
 
-                let bytes = &all_bytes[i..i+2];
-                i += 2;
-
-                // println!("bytes: {:02x?}", bytes);
-
-                let num = bytes[0];
-                let val = bytes[1];
-
-                if let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) {
-                    if let Some((sock, out_addr)) = osc.as_ref() {
-                        if let Some(OscResponse { addr, args }) = response.osc {
-                            let msg = OscPacket::Message(OscMessage {
-                                addr: addr,
-                                args: args,
-                            });
-                            println!("osc: {:?}", msg);
-                            let msg_buf = encoder::encode(&msg)?;
-
-                            sock.send_to(&msg_buf, out_addr)?;
-                        }
-                    }
-
-                    if let Some(CtrlResponse { data }) = response.ctrl {
-                        println!("ctrl: {:02x?}", data);
-                        ctrl_tx.send(data)?;
-                    }
-                } else {
-                    println!("unhandled data: {:02x?}", bytes);
+            if let Some((_, out_conn)) = midi.as_mut() {
+                if let Some(MidiResponse { data }) = response.midi {
+                    println!("send midi: {:02x?}", data);
+                    out_conn.send(&data)?;
                 }
+            }
+
+            if let Some(CtrlResponse { data }) = response.ctrl {
+                println!("ctrl: {:02x?}", data);
+                ctrl_tx.send(data)?;
             }
         }
     }
-
 }
 
 fn run_writer<T: UsbContext>(

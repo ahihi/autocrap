@@ -4,7 +4,7 @@ use std::{
 
 use rosc::{OscMessage, OscType};
 
-use super::config::{Config, CtrlKind, Mapping, OnOffMode, RelativeMode};
+use super::config::{Config, CtrlKind, Mapping, MidiKind, MidiSpec, OnOffMode, RelativeMode};
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -85,6 +85,7 @@ pub struct OnOffLogic {
     mode: OnOffMode,
     ctrl_in_num: Option<u8>,
     ctrl_out_num: Option<u8>,
+    midi: Option<MidiSpec>,
     osc_addr: String,
     state: bool
 }
@@ -105,6 +106,20 @@ impl OnOffLogic {
             }),
             ctrl: self.ctrl_out_num.map(|num| CtrlResponse {
                 data: vec![num, if self.state { 0x7f } else { 0x00 }]
+            }),
+            midi: self.midi.map(|midi| {
+                let data = match midi.kind {
+                    MidiKind::Cc => {
+                        vec![
+                            0b10110000 | midi.channel,
+                            midi.num,
+                            if self.state { 0x7f } else { 0x00 }
+                        ]
+                    }
+                };
+                MidiResponse {
+                    data
+                }
             })
         }
     }
@@ -120,6 +135,7 @@ impl CtrlLogic for OnOffLogic {
             mode: mode,
             ctrl_in_num: mapping.ctrl_in_num,
             ctrl_out_num: mapping.ctrl_out_num,
+            midi: mapping.midi,
             osc_addr: mapping.osc_addr(),
             state: false
         }))
@@ -196,6 +212,7 @@ impl CtrlLogic for OnOffLogic {
 pub struct EightBitLogic {
     ctrl_in_hi_num: u8,
     ctrl_in_lo_num: u8,
+    midi: Option<MidiSpec>,
     osc_addr: String,
     state: [u8;2]
 }
@@ -213,6 +230,7 @@ impl CtrlLogic for EightBitLogic {
         Some(Box::new(EightBitLogic {
             ctrl_in_hi_num: ctrl_in_sequence[0],
             ctrl_in_lo_num: ctrl_in_sequence[1],
+            midi: mapping.midi,
             osc_addr: format!("/{}", mapping.name),
             state: [0x00,0x00]
         }))
@@ -227,10 +245,27 @@ impl CtrlLogic for EightBitLogic {
         if num == self.ctrl_in_lo_num {
             self.state[1] = val;
             let val8 = self.state[0] << 1 | (if self.state[1] != 0x00 { 1 } else { 0 });
-            return Some(OscResponse {
-                addr: self.osc_addr.clone(),
-                args: vec![OscType::Float(val8 as f32 / 255.0)]
-            }.into())
+            return Some(Response {
+                ctrl: None,
+                osc: Some(OscResponse {
+                    addr: self.osc_addr.clone(),
+                    args: vec![OscType::Float(val8 as f32 / 255.0)]
+                }),
+                midi: self.midi.map(|midi| {
+                    let data = match midi.kind {
+                        MidiKind::Cc => {
+                            vec![
+                                0b10110000 | midi.channel,
+                                midi.num,
+                                val8 >> 1
+                            ]
+                        }
+                    };
+                    MidiResponse {
+                        data
+                    }
+                })
+            })
         }
 
         None
@@ -246,6 +281,7 @@ pub struct RelativeLogic {
     mode: RelativeMode,
     ctrl_in_num: Option<u8>,
     ctrl_out_num: Option<u8>,
+    midi: Option<MidiSpec>,
     osc_addr: String,
     state: u8
 }
@@ -270,11 +306,25 @@ impl RelativeLogic {
         };
 
         Response {
+            ctrl,
             osc: Some(OscResponse {
                 addr: self.osc_addr.clone(),
                 args: vec![OscType::Float(self.state as f32 / 127.0)]
             }),
-            ctrl
+            midi: self.midi.map(|midi| {
+                let data = match midi.kind {
+                    MidiKind::Cc => {
+                        vec![
+                            0b10110000 | midi.channel,
+                            midi.num,
+                            self.state
+                        ]
+                    }
+                };
+                MidiResponse {
+                    data
+                }
+            })
         }
     }
 
@@ -297,6 +347,7 @@ impl CtrlLogic for RelativeLogic {
             mode: mode,
             ctrl_in_num: mapping.ctrl_in_num,
             ctrl_out_num: mapping.ctrl_out_num,
+            midi: mapping.midi,
             osc_addr: mapping.osc_addr(),
             state: 0x00
         }))
@@ -364,16 +415,23 @@ pub struct OscResponse {
 }
 
 #[derive(Debug)]
+pub struct MidiResponse {
+    pub data: Vec<u8>
+}
+
+#[derive(Debug)]
 pub struct Response {
     pub ctrl: Option<CtrlResponse>,
-    pub osc: Option<OscResponse>
+    pub osc: Option<OscResponse>,
+    pub midi: Option<MidiResponse>
 }
 
 impl Response {
     pub fn new() -> Response {
         Response {
             ctrl: None,
-            osc: None
+            osc: None,
+            midi: None
         }
     }
 }
@@ -382,7 +440,8 @@ impl Into<Response> for CtrlResponse {
     fn into(self) -> Response {
         Response {
             ctrl: Some(self),
-            osc: None
+            osc: None,
+            midi: None
         }
     }
 }
@@ -392,6 +451,17 @@ impl Into<Response> for OscResponse {
         Response {
             ctrl: None,
             osc: Some(self),
+            midi: None
+        }
+    }
+}
+
+impl Into<Response> for MidiResponse {
+    fn into(self) -> Response {
+        Response {
+            ctrl: None,
+            osc: None,
+            midi: Some(self)
         }
     }
 }
