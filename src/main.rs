@@ -25,7 +25,7 @@ use serde_json;
 mod autocrap;
 
 use autocrap::{
-    config::{Config},
+    config::{Config, Interface, OscInterface},
     interpreter::{Interpreter, CtrlResponse, OscResponse}
 };
 
@@ -213,7 +213,12 @@ fn run_reader<T: UsbContext>(
     endpoint: &Endpoint,
     ctrl_tx: mpsc::Sender<Vec<u8>>
 ) -> Result<()> {
-    let sock = UdpSocket::bind(config.host_addr)?;
+    let osc = match config.interface {
+        Interface::Osc(OscInterface { host_addr, out_addr, .. }) => {
+            let sock = UdpSocket::bind(host_addr)?;
+            Some((sock, out_addr))
+        }
+    };
 
     let mut all_bytes = [0u8; 8];
 
@@ -236,15 +241,17 @@ fn run_reader<T: UsbContext>(
                 let val = bytes[1];
 
                 if let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) {
-                    if let Some(OscResponse { addr, args }) = response.osc {
-                        let msg = OscPacket::Message(OscMessage {
-                            addr: addr,
-                            args: args,
-                        });
-                        println!("osc: {:?}", msg);
-                        let msg_buf = encoder::encode(&msg)?;
+                    if let Some((sock, out_addr)) = osc.as_ref() {
+                        if let Some(OscResponse { addr, args }) = response.osc {
+                            let msg = OscPacket::Message(OscMessage {
+                                addr: addr,
+                                args: args,
+                            });
+                            println!("osc: {:?}", msg);
+                            let msg_buf = encoder::encode(&msg)?;
 
-                        sock.send_to(&msg_buf, config.osc_out_addr)?;
+                            sock.send_to(&msg_buf, out_addr)?;
+                        }
                     }
 
                     if let Some(CtrlResponse { data }) = response.ctrl {
@@ -278,8 +285,12 @@ fn run_osc_receiver(
     interpreter: &Arc<RwLock<Interpreter>>,
     ctrl_tx: mpsc::Sender<Vec<u8>>
 ) -> Result<()> {
-    let sock = UdpSocket::bind(config.osc_in_addr)?;
-    println!("listening to {}", config.osc_in_addr);
+    let Interface::Osc(OscInterface { in_addr, .. }) = config.interface else {
+        return Ok(())
+    };
+
+    let sock = UdpSocket::bind(in_addr)?;
+    println!("listening to {}", in_addr);
 
     let mut buf = [0u8; rosc::decoder::MTU];
     loop {

@@ -3,9 +3,11 @@
   "product_id": 10,
   "in_endpoint": 1,
   "out_endpoint": 2,
-  "host_addr": "10.0.0.6:9900",
-  "osc_out_addr": "10.0.0.2:9901",
-  "osc_in_addr": "10.0.0.6:9902",
+  "interface": {"Osc": {
+    "host_addr": "127.0.0.1:9900",
+    "out_addr": "127.0.0.1:9901",
+    "in_addr": "127.0.0.1:9902"
+  }},
   "mappings": [
     {"Range": {
       "count": 8,

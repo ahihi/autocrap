@@ -90,14 +90,24 @@ impl AbstractMapping {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OscInterface {
+    pub host_addr: SocketAddrV4,
+    pub out_addr: SocketAddrV4,
+    pub in_addr: SocketAddrV4
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Interface {
+    Osc(OscInterface)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub vendor_id: u16,
     pub product_id: u16,
     pub in_endpoint: u8,
     pub out_endpoint: u8,
-    pub host_addr: SocketAddrV4,
-    pub osc_out_addr: SocketAddrV4,
-    pub osc_in_addr: SocketAddrV4,
+    pub interface: Interface,
     pub mappings: Vec<AbstractMapping>
 }
 
