@@ -101,6 +101,3 @@ pub struct Config {
     pub mappings: Vec<AbstractMapping>
 }
 
-fn float_to_7bit(val: f32) -> u8 {
-    (val.max(0.0).min(1.0) * 127.0).round() as u8
-}

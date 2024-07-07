@@ -3,6 +3,10 @@ use std::{
     fs::File,
     io::BufReader,
     net::{UdpSocket},
+    sync::{
+        Arc, RwLock,
+        mpsc
+    },
     thread,
     time::Duration,
     vec::Vec
@@ -94,16 +98,22 @@ fn run() -> Result<()> {
             configure_endpoint(&mut handle, &ctrl_in_endpoint).unwrap();
             configure_endpoint(&mut handle, &ctrl_out_endpoint).unwrap();
 
-            let interpreter = Interpreter::new(&config);
+            let interpreter = Arc::new(RwLock::new(Interpreter::new(&config)));
+            let (osc_receiver_ctrl_tx, ctrl_rx) = mpsc::channel();
+            let reader_ctrl_tx = osc_receiver_ctrl_tx.clone();
 
             write_init(&mut handle, ctrl_out_endpoint.address).unwrap();
 
             thread::scope(|s| {
                 let writer_thread = s.spawn(|| {
-                    run_writer(&config, &handle, &ctrl_out_endpoint).unwrap();
+                    run_writer(&handle, &ctrl_out_endpoint, ctrl_rx).unwrap();
                 });
 
-                run_reader(&config, &interpreter, &handle, &ctrl_in_endpoint).unwrap();
+                let osc_receiver_thread = s.spawn(|| {
+                    run_osc_receiver(&config, &interpreter, osc_receiver_ctrl_tx).unwrap();
+                });
+
+                run_reader(&config, &interpreter, &handle, &ctrl_in_endpoint, reader_ctrl_tx).unwrap();
 
                 writer_thread.join().unwrap();
 
@@ -196,7 +206,13 @@ fn configure_endpoint<T: UsbContext>(
     Ok(())
 }
 
-fn run_reader<T: UsbContext>(config: &Config, interpreter: &Interpreter, handle: &DeviceHandle<T>, endpoint: &Endpoint) -> Result<()> {
+fn run_reader<T: UsbContext>(
+    config: &Config,
+    interpreter: &Arc<RwLock<Interpreter>>,
+    handle: &DeviceHandle<T>,
+    endpoint: &Endpoint,
+    ctrl_tx: mpsc::Sender<Vec<u8>>
+) -> Result<()> {
     let sock = UdpSocket::bind(config.host_addr)?;
 
     let mut all_bytes = [0u8; 8];
@@ -222,10 +238,10 @@ fn run_reader<T: UsbContext>(config: &Config, interpreter: &Interpreter, handle:
                 let num = bytes[0];
                 let val = bytes[1];
 
-                if let Some(response) = interpreter.handle_ctrl(num, val) {
+                if let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) {
                     if let Some((addr, args)) = response.osc {
                         let msg = OscPacket::Message(OscMessage {
-                            addr: addr, // TODO: dont allocate every time
+                            addr: addr,
                             args: args,
                         });
                         println!("osc: {:?}", msg);
@@ -235,32 +251,36 @@ fn run_reader<T: UsbContext>(config: &Config, interpreter: &Interpreter, handle:
                     }
 
                     if let Some(out_bytes) = response.ctrl {
-                        // TODO: gather, then send to writer after while loop
                         println!("ctrl: {:02x?}", out_bytes);
+                        ctrl_tx.send(out_bytes)?;
                     }
                 } else {
                     println!("unhandled data: {:02x?}", bytes);
-                    continue;
                 }
-
-                // } else if num == 0x48 {
-                //     // xfader hi
-                //     xfader_hi = val;
-                //     continue;
-                // } else if num == 0x49 {
-                //     // xfader lo
-                //     xfader_lo = val;
-                //     let val8 = (xfader_hi << 1) | (if xfader_lo != 0x00 { 1 } else { 0 });
-
-                //     addr = "/xfader".to_string();
-                //     args = vec![OscType::Float(val8 as f32 / 255.0)];
             }
         }
     }
 
 }
 
-fn run_writer<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint: &Endpoint) -> Result<()> {
+fn run_writer<T: UsbContext>(
+    handle: &DeviceHandle<T>,
+    endpoint: &Endpoint,
+    ctrl_rx: mpsc::Receiver<Vec<u8>>
+) -> Result<()> {
+    loop {
+        let ctrl_out = ctrl_rx.recv()?;
+        handle.write_interrupt(endpoint.address, &ctrl_out, DEFAULT_TIMEOUT);
+    }
+
+    Ok(())
+}
+
+fn run_osc_receiver(
+    config: &Config,
+    interpreter: &Arc<RwLock<Interpreter>>,
+    ctrl_tx: mpsc::Sender<Vec<u8>>
+) -> Result<()> {
     let sock = UdpSocket::bind(config.osc_in_addr)?;
     println!("listening to {}", config.osc_in_addr);
 
@@ -271,13 +291,16 @@ fn run_writer<T: UsbContext>(config: &Config, handle: &DeviceHandle<T>, endpoint
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
                 match packet {
                     OscPacket::Message(msg) => {
-                        // let Some(osc_match_data) = config.match_osc(&msg) else {
-                        //     println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
-                        //     continue;
-                        // };
+                        let Some(response) = interpreter.read().unwrap().handle_osc(&msg) else {
+                            println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
+                            continue;
+                        };
 
-                        // println!("write: {:02x?}", osc_match_data.ctrl_data);
-                        // handle.write_interrupt(endpoint.address, &osc_match_data.ctrl_data, DEFAULT_TIMEOUT)?;
+                        let Some(ctrl_out) = response.ctrl else {
+                            continue;
+                        };
+
+                        ctrl_tx.send(ctrl_out)?
                     }
                     OscPacket::Bundle(bundle) => {
                         println!("OSC Bundle: {:?}", bundle);

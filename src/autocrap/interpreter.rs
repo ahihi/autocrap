@@ -2,7 +2,7 @@ use std::{
     sync::{Arc, RwLock}
 };
 
-use rosc::{OscType};
+use rosc::{OscMessage, OscType};
 
 use super::config::{Config, CtrlKind, Mapping, OnOffMode, RelativeMode};
 
@@ -49,9 +49,21 @@ impl Interpreter {
         interp
     }
 
-    pub fn handle_ctrl(&self, num: u8, val: u8) -> Option<CtrlResponse> {
-        for ctrl in &self.ctrls {
+    pub fn handle_ctrl(&mut self, num: u8, val: u8) -> Option<CtrlResponse> {
+        for ctrl in &mut self.ctrls {
             let Some(response) = ctrl.handle_ctrl(num, val) else {
+                continue;
+            };
+
+            return Some(response);
+        }
+
+        None
+    }
+
+    pub fn handle_osc(&self, msg: &OscMessage) -> Option<OscResponse> {
+        for ctrl in &self.ctrls {
+            let Some(response) = ctrl.handle_osc(msg) else {
                 continue;
             };
 
@@ -62,9 +74,10 @@ impl Interpreter {
     }
 }
 
-pub trait CtrlLogic: core::fmt::Debug {
+pub trait CtrlLogic: core::fmt::Debug + Send + Sync {
     fn from_mapping(mapping: &Mapping) -> Option<Box<dyn CtrlLogic>> where Self: Sized;
-    fn handle_ctrl(&self, num: u8, val: u8) -> Option<CtrlResponse>;
+    fn handle_ctrl(&mut self, num: u8, val: u8) -> Option<CtrlResponse>;
+    fn handle_osc(&self, msg: &OscMessage) -> Option<OscResponse>;
 }
 
 #[derive(Debug)]
@@ -73,7 +86,7 @@ pub struct OnOffLogic {
     ctrl_in_num: Option<u8>,
     ctrl_out_num: Option<u8>,
     osc_addr: String,
-    state: Arc<RwLock<bool>>
+    state: bool
 }
 
 impl CtrlLogic for OnOffLogic {
@@ -87,11 +100,11 @@ impl CtrlLogic for OnOffLogic {
             ctrl_in_num: mapping.ctrl_in_num,
             ctrl_out_num: mapping.ctrl_out_num,
             osc_addr: mapping.osc_addr(),
-            state: Arc::new(RwLock::new(false))
+            state: false
         }))
     }
 
-    fn handle_ctrl(&self, num: u8, val: u8) -> Option<CtrlResponse> {
+    fn handle_ctrl(&mut self, num: u8, val: u8) -> Option<CtrlResponse> {
         let Some(ctrl_in_num) = self.ctrl_in_num else {
             return None;
         };
@@ -101,19 +114,19 @@ impl CtrlLogic for OnOffLogic {
         }
 
         let pressed = if val != 0 { true } else { false };
-        let mut state = self.state.write().unwrap();
+        // let mut state = self.state.write().unwrap();
         let mut send = true;
         match self.mode {
             OnOffMode::Raw => {
-                *state = pressed;
+                self.state = pressed;
                 send = false;
             },
             OnOffMode::Momentary => {
-                *state = pressed;
+                self.state = pressed;
             },
             OnOffMode::Toggle => {
                 if pressed {
-                    *state = !*state;
+                    self.state = !self.state;
                 } else {
                     send = false;
                 }
@@ -121,13 +134,13 @@ impl CtrlLogic for OnOffLogic {
         }
 
         let osc = if send {
-            Some((self.osc_addr.clone(), vec![OscType::Float(if *state { 1.0 } else { 0.0 })]))
+            Some((self.osc_addr.clone(), vec![OscType::Float(if self.state { 1.0 } else { 0.0 })]))
         } else {
             None
         };
 
         let ctrl_out = if send {
-            self.ctrl_out_num.map(|num| vec![num, if *state { 0x7f } else { 0x00 }])
+            self.ctrl_out_num.map(|num| vec![num, if self.state { 0x7f } else { 0x00 }])
         } else {
             None
         };
@@ -137,6 +150,28 @@ impl CtrlLogic for OnOffLogic {
             ctrl: ctrl_out
         })
     }
+
+    fn handle_osc(&self, msg: &OscMessage) -> Option<OscResponse> {
+        let Some(num) = self.ctrl_out_num else {
+            return None;
+        };
+
+        if msg.addr != self.osc_addr {
+            return None;
+        }
+
+        if msg.args.len() < 1 {
+            return None;
+        }
+
+        let OscType::Float(val) = msg.args[0] else {
+            return None;
+        };
+
+        Some(OscResponse {
+            ctrl: Some(vec![num, float_to_7bit(val)])
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -144,7 +179,7 @@ pub struct EightBitLogic {
     ctrl_in_hi_num: u8,
     ctrl_in_lo_num: u8,
     osc_addr: String,
-    state: Arc<RwLock<[u8;2]>>
+    state: [u8;2]
 }
 
 impl CtrlLogic for EightBitLogic {
@@ -161,14 +196,14 @@ impl CtrlLogic for EightBitLogic {
             ctrl_in_hi_num: ctrl_in_sequence[0],
             ctrl_in_lo_num: ctrl_in_sequence[1],
             osc_addr: format!("/{}", mapping.name),
-            state: Arc::new(RwLock::new([0x00,0x00]))
+            state: [0x00,0x00]
         }))
     }
 
-    fn handle_ctrl(&self, num: u8, val: u8) -> Option<CtrlResponse> {
+    fn handle_ctrl(&mut self, num: u8, val: u8) -> Option<CtrlResponse> {
         if num == self.ctrl_in_hi_num {
-            let mut state = self.state.write().unwrap();
-            state[0] = val;
+            // let mut state = self.state.write().unwrap();
+            self.state[0] = val;
             return Some(CtrlResponse {
                 osc: None,
                 ctrl: None
@@ -176,15 +211,19 @@ impl CtrlLogic for EightBitLogic {
         }
 
         if num == self.ctrl_in_lo_num {
-            let mut state = self.state.write().unwrap();
-            state[1] = val;
-            let val8 = state[0] << 1 | (if state[1] != 0x00 { 1 } else { 0 });
+            // let mut state = self.state.write().unwrap();
+            self.state[1] = val;
+            let val8 = self.state[0] << 1 | (if self.state[1] != 0x00 { 1 } else { 0 });
             return Some(CtrlResponse {
                 osc: Some((self.osc_addr.clone(), vec![OscType::Float(val8 as f32 / 255.0)])),
                 ctrl: None
             })
         }
 
+        None
+    }
+
+    fn handle_osc(&self, msg: &OscMessage) -> Option<OscResponse> {
         None
     }
 }
@@ -195,7 +234,7 @@ pub struct RelativeLogic {
     ctrl_in_num: Option<u8>,
     ctrl_out_num: Option<u8>,
     osc_addr: String,
-    state: Arc<RwLock<u8>>
+    state: u8
 }
 
 impl CtrlLogic for RelativeLogic {
@@ -209,11 +248,11 @@ impl CtrlLogic for RelativeLogic {
             ctrl_in_num: mapping.ctrl_in_num,
             ctrl_out_num: mapping.ctrl_out_num,
             osc_addr: mapping.osc_addr(),
-            state: Arc::new(RwLock::new(0x00))
+            state: 0x00
         }))
     }
 
-    fn handle_ctrl(&self, num: u8, val: u8) -> Option<CtrlResponse> {
+    fn handle_ctrl(&mut self, num: u8, val: u8) -> Option<CtrlResponse> {
         let Some(ctrl_in_num) = self.ctrl_in_num else {
             return None;
         };
@@ -230,10 +269,10 @@ impl CtrlLogic for RelativeLogic {
                 osc_val = delta as f32;
             },
             RelativeMode::Accumulate => {
-                let mut state = self.state.write().unwrap();
-                *state = state.saturating_add_signed(delta).min(127);
-                osc_val = *state as f32 / 127.0;
-                ctrl_out = self.ctrl_out_num.map(|num| vec![num, *state]);
+                // let mut state = self.state.write().unwrap();
+                self.state = self.state.saturating_add_signed(delta).min(127);
+                osc_val = self.state as f32 / 127.0;
+                ctrl_out = self.ctrl_out_num.map(|num| vec![num, self.state]);
             }
         }
 
@@ -242,9 +281,41 @@ impl CtrlLogic for RelativeLogic {
             ctrl: ctrl_out
         })
     }
+
+    fn handle_osc(&self, msg: &OscMessage) -> Option<OscResponse> {
+        let Some(num) = self.ctrl_out_num else {
+            return None;
+        };
+
+        if msg.addr != self.osc_addr {
+            return None;
+        }
+
+        if msg.args.len() < 1 {
+            return None;
+        }
+
+        let OscType::Float(val) = msg.args[0] else {
+            return None;
+        };
+
+        Some(OscResponse {
+            ctrl: Some(vec![num, float_to_7bit(val)])
+        })
+    }
 }
 
+#[derive(Debug)]
 pub struct CtrlResponse {
     pub osc: Option<(String, Vec<OscType>)>,
     pub ctrl: Option<Vec<u8>>
+}
+
+#[derive(Debug)]
+pub struct OscResponse {
+    pub ctrl: Option<Vec<u8>>
+}
+
+fn float_to_7bit(val: f32) -> u8 {
+    (val.max(0.0).min(1.0) * 127.0).round() as u8
 }
