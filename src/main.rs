@@ -120,6 +120,7 @@ fn run() -> Result<()> {
 
                 run_reader(&config, &interpreter, &handle, &ctrl_in_endpoint, reader_ctrl_tx).unwrap();
 
+                osc_receiver_thread.join().unwrap();
                 writer_thread.join().unwrap();
 
                 // handle.write_interrupt(ctrl_out_endpoint.address, &[0x00, 0x00], DEFAULT_TIMEOUT)?;
@@ -307,10 +308,8 @@ fn run_writer<T: UsbContext>(
 ) -> Result<()> {
     loop {
         let ctrl_out = ctrl_rx.recv()?;
-        handle.write_interrupt(endpoint.address, &ctrl_out, DEFAULT_TIMEOUT);
+        handle.write_interrupt(endpoint.address, &ctrl_out, DEFAULT_TIMEOUT)?;
     }
-
-    Ok(())
 }
 
 fn run_osc_receiver(

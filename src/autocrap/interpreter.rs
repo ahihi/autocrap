@@ -1,7 +1,3 @@
-use std::{
-    sync::{Arc, RwLock}
-};
-
 use rosc::{OscMessage, OscType};
 
 use super::config::{Config, CtrlKind, Mapping, MidiKind, MidiSpec, OnOffMode, RelativeMode};
