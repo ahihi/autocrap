@@ -2,27 +2,26 @@ use std::{
     error::Error,
     fs::File,
     io::BufReader,
-    net::{SocketAddrV4, UdpSocket},
+    net::{UdpSocket},
     thread,
     time::Duration,
     vec::Vec
 };
 
 use rosc::encoder;
-use rosc::{OscMessage, OscPacket, OscType};
+use rosc::{OscMessage, OscPacket};
 
 use rusb::{
     Context, Device, Direction, DeviceDescriptor, DeviceHandle,
     TransferType, UsbContext,
 };
 
-use serde::{Serialize, Deserialize};
 use serde_json;
 
 mod autocrap;
 
 use autocrap::{
-    config::{CtrlKind, CtrlNum, Config, Mapping, MidiKind},
+    config::{Config},
     interpreter::{Interpreter}
 };
 

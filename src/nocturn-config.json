@@ -7,80 +7,66 @@
   "osc_out_addr": "10.0.0.2:9901",
   "osc_in_addr": "10.0.0.6:9902",
   "mappings": [
-    {
-      "name": "knob{i}",
-      "numbering": {"Range": {
-        "ctrl_in": [64, 71],
-        "ctrl_out": [64, 71],
-        "midi": [0, 7]
-      }},
-      "ctrl_kind": "Relative",
-      "midi_kind": "Cc",
-      "mode": "Accumulate"
-    },
-    {
-      "name": "knobTouch{i}",
-      "numbering": {"Range": {
-        "ctrl_in": [96, 104],
-        "mini": [0, 7]
-      }},
-      "ctrl_kind": "OnOff",
-      "midi_kind": "Cc",
-      "mode": "Momentary"
-    },
-    {
-      "name": "button{i}",
-      "numbering": {"Range": {
-        "ctrl_in": [112, 127],
-        "ctrl_out": [112, 127],
-        "midi": [0, 15]
-      }},
-      "ctrl_in_num": {"Range": [112, 127]},
-      "ctrl_out_num": {"Range": [112, 127]},
-      "ctrl_kind": "OnOff",
-      "midi_kind": "Cc",
-      "mode": "Toggle"
-    },
-    {
+    {"Range": {
+      "count": 8,
+      "mapping": {
+        "name": "knob{i}",
+        "ctrl_in_num": 64,
+        "ctrl_out_num": 64,
+        "midi_num": 0,
+        "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
+        "midi_kind": "Cc"
+      }
+    }},
+    {"Range": {
+      "count": 8,
+      "mapping": {
+        "name": "knobTouch{i}",
+        "ctrl_in_num": 96,
+        "midi_num": 0,
+        "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+        "midi_kind": "Cc"
+      }
+    }},
+    {"Range": {
+      "count": 16,
+      "mapping": {
+        "name": "button{i}",
+        "ctrl_in_num": 112,
+        "ctrl_out_num": 112,
+        "midi_num": 0,
+        "ctrl_kind": {"OnOff": {"mode": "Toggle"}},
+        "midi_kind": "Cc"
+      }
+    }},
+    {"Single": {
       "name": "xfader",
-      "numbering": {"Single": {
-        "ctrl_in_sequence": [72, 73],
-        "midi": 20
-      }},
+      "ctrl_in_sequence": [72, 73],
+      "midi_num": 20,
       "ctrl_kind": "EightBit",
-      "midi_kind": "CoarseFine",
-      "mode": "Raw"
-    },
-    {
+      "midi_kind": "CoarseFine"
+    }},
+    {"Single": {
       "name": "xfaderTouch",
-      "numbering": {"Single": {
-        "ctrl_in": 83,
-        "midi": 20
-      }},
-      "ctrl_kind": "OnOff",
-      "midi_kind": "Cc",
-      "mode": "Momentary"
-    },
-    {
+      "ctrl_in_num": 83,
+      "midi_num": 20,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "midi_kind": "Cc"
+    }},
+    {"Single": {
       "name": "speedDial",
-      "numbering": {"Single": {
-        "ctrl_in": 74,
-        "ctrl_out": 80,
-        "midi": 10
-      }},
-      "ctrl_kind": "Relative",
-      "midi_kind": "Cc",
-      "mode": "Accumulate"
-    },
-    {
+      "ctrl_in_num": 74,
+      "ctrl_out_num": 80,
+      "midi_num": 10,
+      "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
+      "midi_kind": "Cc"
+    }},
+    {"Single": {
       "name": "speedDialButton",
-      "numbering": {"Single": {
-        "ctrl_in": 81,
-        "midi": 10
-      }},
-      "ctrl_kind": "OnOff",
-      "midi_kind": "Cc",
-      "mode": "Momentary"
-    }
+      "ctrl_in_num": 81,
+      "midi_num": 10,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "midi_kind": "Cc"
+    }}
   ]
 }
