@@ -5,7 +5,8 @@
   "out_endpoint": 2,
   "interface": {"Midi": {
     "client_name": "autocrap",
-    "out_port": {"Virtual": "autocrap"}
+    "out_port": {"Virtual": "autocrap"},
+    "in_port": {"Virtual": "autocrap"}
   }},
   "mappings": [
     {"Range": {

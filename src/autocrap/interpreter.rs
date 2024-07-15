@@ -68,12 +68,25 @@ impl Interpreter {
 
         None
     }
+
+    pub fn handle_midi(&mut self, msg: &[u8]) -> Option<Response> {
+        for ctrl in &mut self.ctrls {
+            let Some(response) = ctrl.handle_midi(msg) else {
+                continue;
+            };
+
+            return Some(response);
+        }
+
+        None
+    }
 }
 
 pub trait CtrlLogic: core::fmt::Debug + Send + Sync {
     fn from_mapping(mapping: &Mapping) -> Option<Box<dyn CtrlLogic>> where Self: Sized;
     fn handle_ctrl(&mut self, num: u8, val: u8) -> Option<Response>;
     fn handle_osc(&mut self, msg: &OscMessage) -> Option<Response>;
+    fn handle_midi(&mut self, msg: &[u8]) -> Option<Response>;
 }
 
 #[derive(Debug)]
@@ -182,7 +195,7 @@ impl CtrlLogic for OnOffLogic {
     }
 
     fn handle_osc(&mut self, msg: &OscMessage) -> Option<Response> {
-        let Some(num) = self.ctrl_out_num else {
+        let Some(_num) = self.ctrl_out_num else {
             return None;
         };
 
@@ -199,6 +212,36 @@ impl CtrlLogic for OnOffLogic {
         };
 
         self.update(val != 0.0)
+            .ctrl
+            .map(|r| r.into())
+    }
+
+    fn handle_midi(&mut self, msg: &[u8]) -> Option<Response> {
+        let Some(_num) = self.ctrl_out_num else {
+            return None;
+        };
+
+        let Some(midi_spec) = self.midi else {
+            return None;
+        };
+
+        if msg.len() != 3 {
+            return None;
+        }
+
+        let status = msg[0];
+        let num = msg[1];
+        let val = msg[2];
+
+        if status != 0b10110000 | midi_spec.channel {
+            return None;
+        }
+
+        if num != midi_spec.num {
+            return None;
+        }
+
+        self.update(val != 0)
             .ctrl
             .map(|r| r.into())
     }
@@ -267,7 +310,11 @@ impl CtrlLogic for EightBitLogic {
         None
     }
 
-    fn handle_osc(&mut self, msg: &OscMessage) -> Option<Response> {
+    fn handle_osc(&mut self, _msg: &OscMessage) -> Option<Response> {
+        None
+    }
+
+    fn handle_midi(&mut self, _msg: &[u8]) -> Option<Response> {
         None
     }
 }
@@ -375,7 +422,7 @@ impl CtrlLogic for RelativeLogic {
     }
 
     fn handle_osc(&mut self, msg: &OscMessage) -> Option<Response> {
-        let Some(num) = self.ctrl_out_num else {
+        let Some(_num) = self.ctrl_out_num else {
             return None;
         };
 
@@ -394,6 +441,36 @@ impl CtrlLogic for RelativeLogic {
         let new_state = float_to_7bit(val);
 
         self.update(new_state)
+            .ctrl
+            .map(|r| r.into())
+    }
+
+    fn handle_midi(&mut self, msg: &[u8]) -> Option<Response> {
+        let Some(_num) = self.ctrl_out_num else {
+            return None;
+        };
+
+        let Some(midi_spec) = self.midi else {
+            return None;
+        };
+
+        if msg.len() != 3 {
+            return None;
+        }
+
+        let status = msg[0];
+        let num = msg[1];
+        let val = msg[2];
+
+        if status != 0b10110000 | midi_spec.channel {
+            return None;
+        }
+
+        if num != midi_spec.num {
+            return None;
+        }
+
+        self.update(val)
             .ctrl
             .map(|r| r.into())
     }

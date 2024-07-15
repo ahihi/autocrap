@@ -119,7 +119,8 @@ pub enum MidiPort {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MidiInterface {
     pub client_name: String,
-    pub out_port: MidiPort
+    pub out_port: MidiPort,
+    pub in_port: MidiPort
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

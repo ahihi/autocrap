@@ -13,9 +13,8 @@ use std::{
 };
 
 use midir::{
-    MidiInput, MidiInputPort,
-    MidiOutput, MidiOutputPort,
-    os::unix::{VirtualOutput}
+    MidiInput, MidiOutput,
+    os::unix::{VirtualInput, VirtualOutput}
 };
 use rosc::encoder;
 use rosc::{OscMessage, OscPacket};
@@ -104,8 +103,8 @@ fn run() -> Result<()> {
             configure_endpoint(&mut handle, &ctrl_out_endpoint).unwrap();
 
             let interpreter = Arc::new(RwLock::new(Interpreter::new(&config)));
-            let (osc_receiver_ctrl_tx, ctrl_rx) = mpsc::channel();
-            let reader_ctrl_tx = osc_receiver_ctrl_tx.clone();
+            let (receiver_ctrl_tx, ctrl_rx) = mpsc::channel();
+            let reader_ctrl_tx = receiver_ctrl_tx.clone();
 
             write_init(&mut handle, ctrl_out_endpoint.address).unwrap();
 
@@ -114,13 +113,18 @@ fn run() -> Result<()> {
                     run_writer(&handle, &ctrl_out_endpoint, ctrl_rx).unwrap();
                 });
 
-                let osc_receiver_thread = s.spawn(|| {
-                    run_osc_receiver(&config, &interpreter, osc_receiver_ctrl_tx).unwrap();
+                let receiver_thread = s.spawn(|| {
+                    match config.interface {
+                        Interface::Midi(_) =>
+                            run_midi_receiver(&config, &interpreter, receiver_ctrl_tx).unwrap(),
+                        Interface::Osc(_) =>
+                            run_osc_receiver(&config, &interpreter, receiver_ctrl_tx).unwrap(),
+                    }
                 });
 
                 run_reader(&config, &interpreter, &handle, &ctrl_in_endpoint, reader_ctrl_tx).unwrap();
 
-                osc_receiver_thread.join().unwrap();
+                receiver_thread.join().unwrap();
                 writer_thread.join().unwrap();
 
                 // handle.write_interrupt(ctrl_out_endpoint.address, &[0x00, 0x00], DEFAULT_TIMEOUT)?;
@@ -288,13 +292,13 @@ fn run_reader<T: UsbContext>(
 
             if let Some((_, out_conn)) = midi.as_mut() {
                 if let Some(MidiResponse { data }) = response.midi {
-                    println!("send midi: {:02x?}", data);
+                    // println!("send midi: {:02x?}", data);
                     out_conn.send(&data)?;
                 }
             }
 
             if let Some(CtrlResponse { data }) = response.ctrl {
-                println!("ctrl: {:02x?}", data);
+                // println!("ctrl: {:02x?}", data);
                 ctrl_tx.send(data)?;
             }
         }
@@ -352,6 +356,65 @@ fn run_osc_receiver(
                 break;
             }
         }
+    }
+
+    Ok(())
+}
+
+fn run_midi_receiver(
+    config: &Config,
+    interpreter: &Arc<RwLock<Interpreter>>,
+    ctrl_tx: mpsc::Sender<Vec<u8>>
+) -> Result<()> {
+    let Interface::Midi(MidiInterface { ref client_name, ref in_port, .. }) = config.interface else {
+        return Ok(())
+    };
+
+    let (tx, rx) = mpsc::channel();
+    let midi_in = MidiInput::new(client_name).unwrap();
+    match in_port {
+        MidiPort::Index(index) =>
+            Some(midi_in.ports().remove(*index))
+            .map(|p| (midi_in.port_name(&p).unwrap(), midi_in.connect(
+                &p,
+                client_name,
+                move |_time, msg, tx| {
+                    tx.send(msg.to_vec()).unwrap();
+                },
+                tx
+            ).unwrap())),
+        MidiPort::Name(ref name) =>
+            midi_in.ports().into_iter().find(|p| &midi_in.port_name(&p).unwrap() == name)
+            .map(|p| (midi_in.port_name(&p).unwrap(), midi_in.connect(
+                &p,
+                client_name,
+                move |_time, msg, tx| {
+                    tx.send(msg.to_vec()).unwrap();
+                },
+                tx
+            ).unwrap())),
+        MidiPort::Virtual(ref name) =>
+            Some((client_name.to_string(), midi_in.create_virtual(
+                client_name,
+                move |_time, msg, tx| {
+                    tx.send(msg.to_vec()).unwrap();
+                },
+                tx
+            ).unwrap()))
+    };
+
+    loop {
+        let msg = rx.recv().unwrap();
+        let Some(response) = interpreter.write().unwrap().handle_midi(&msg) else {
+            println!("unhandled midi message: {:?}", msg);
+            continue;
+        };
+
+        let Some(CtrlResponse { data }) = response.ctrl else {
+            continue;
+        };
+
+        ctrl_tx.send(data)?
     }
 
     Ok(())
