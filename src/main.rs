@@ -99,6 +99,8 @@ fn run() -> Result<()> {
             println!("control in endpoint: {:?}", ctrl_in_endpoint);
             println!("control out endpoint: {:?}", ctrl_out_endpoint);
 
+            handle.set_auto_detach_kernel_driver(true).unwrap();
+
             configure_endpoint(&mut handle, &ctrl_in_endpoint).unwrap();
             configure_endpoint(&mut handle, &ctrl_out_endpoint).unwrap();
 
@@ -211,6 +213,7 @@ fn configure_endpoint<T: UsbContext>(
     endpoint: &Endpoint,
 ) -> Result<()> {
     // handle.set_active_configuration(endpoint.config)?;
+    println!("configure_endpoint {:?}", endpoint);
     handle.claim_interface(endpoint.iface)?;
     // handle.set_alternate_setting(endpoint.iface, endpoint.setting)?;
     Ok(())
@@ -372,7 +375,7 @@ fn run_midi_receiver(
 
     let (tx, rx) = mpsc::channel();
     let midi_in = MidiInput::new(client_name).unwrap();
-    match in_port {
+    let midi = match in_port {
         MidiPort::Index(index) =>
             Some(midi_in.ports().remove(*index))
             .map(|p| (midi_in.port_name(&p).unwrap(), midi_in.connect(
@@ -402,6 +405,10 @@ fn run_midi_receiver(
                 tx
             ).unwrap()))
     };
+
+    if let None = midi {
+        println!("no midi in port???");
+    }
 
     loop {
         let msg = rx.recv().unwrap();
