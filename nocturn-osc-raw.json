@@ -1,0 +1,74 @@
+{
+  "vendor_id": 4661,
+  "product_id": 10,
+  "in_endpoint": 1,
+  "out_endpoint": 2,
+  "interface": {"Osc": {
+    "host_addr": "127.0.0.1:9900",
+    "out_addr": "127.0.0.1:9901",
+    "in_addr": "127.0.0.1:9902"
+  }},
+  "mappings": [
+    {"Range": {
+      "count": 8,
+      "mapping": {
+        "name": "knob{i}",
+        "ctrl_in_num": 64,
+        "ctrl_out_num": 64,
+        "midi_num": 0,
+        "ctrl_kind": {"Relative": {"mode": "Raw"}},
+        "midi_kind": "Cc"
+      }
+    }},
+    {"Range": {
+      "count": 8,
+      "mapping": {
+        "name": "knobTouch{i}",
+        "ctrl_in_num": 96,
+        "midi_num": 0,
+        "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+        "midi_kind": "Cc"
+      }
+    }},
+    {"Range": {
+      "count": 16,
+      "mapping": {
+        "name": "button{i}",
+        "ctrl_in_num": 112,
+        "ctrl_out_num": 112,
+        "midi_num": 0,
+        "ctrl_kind": {"OnOff": {"mode": "Raw"}},
+        "midi_kind": "Cc"
+      }
+    }},
+    {"Single": {
+      "name": "xfader",
+      "ctrl_in_sequence": [72, 73],
+      "midi_num": 20,
+      "ctrl_kind": "EightBit",
+      "midi_kind": "CoarseFine"
+    }},
+    {"Single": {
+      "name": "xfaderTouch",
+      "ctrl_in_num": 83,
+      "midi_num": 20,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "midi_kind": "Cc"
+    }},
+    {"Single": {
+      "name": "speedDial",
+      "ctrl_in_num": 74,
+      "ctrl_out_num": 80,
+      "midi_num": 10,
+      "ctrl_kind": {"Relative": {"mode": "Raw"}},
+      "midi_kind": "Cc"
+    }},
+    {"Single": {
+      "name": "speedDialButton",
+      "ctrl_in_num": 81,
+      "midi_num": 10,
+      "ctrl_kind": {"OnOff": {"mode": "Raw"}},
+      "midi_kind": "Cc"
+    }}
+  ]
+}
