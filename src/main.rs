@@ -286,7 +286,7 @@ fn run_reader<T: UsbContext>(
                         addr: addr,
                         args: args,
                     });
-                    println!("osc: {:?}", msg);
+                    // println!("osc out: {:?}", msg);
                     let msg_buf = encoder::encode(&msg)?;
 
                     sock.send_to(&msg_buf, out_addr)?;
@@ -315,6 +315,7 @@ fn run_writer<T: UsbContext>(
 ) -> Result<()> {
     loop {
         let ctrl_out = ctrl_rx.recv()?;
+        // println!("ctrl out: {:02x?}", ctrl_out);
         handle.write_interrupt(endpoint.address, &ctrl_out, DEFAULT_TIMEOUT)?;
     }
 }
@@ -338,10 +339,13 @@ fn run_osc_receiver(
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
                 match packet {
                     OscPacket::Message(msg) => {
+                        // println!("osc in: {} {:?}", msg.addr, msg.args);
                         let Some(response) = interpreter.write().unwrap().handle_osc(&msg) else {
                             println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
                             continue;
                         };
+
+                        // println!("osc in response: {:?}", response);
 
                         let Some(CtrlResponse { data }) = response.ctrl else {
                             continue;

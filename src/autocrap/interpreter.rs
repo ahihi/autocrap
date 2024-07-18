@@ -100,21 +100,23 @@ pub struct OnOffLogic {
 }
 
 impl OnOffLogic {
-    fn update(&mut self, new_state: bool) -> Response {
-        let changed = new_state != self.state;
-        self.state = new_state;
+    fn update(&mut self, new_state: bool, remember: bool) -> Response {
+        if remember {
+            let changed = new_state != self.state;
+            self.state = new_state;
 
-        if !changed {
-            return Response::new();
+            if !changed {
+                return Response::new();
+            }
         }
 
         Response {
             osc: Some(OscResponse {
                 addr: self.osc_addr.clone(),
-                args: vec![OscType::Float(if self.state { 1.0 } else { 0.0 })]
+                args: vec![OscType::Float(if new_state { 1.0 } else { 0.0 })]
             }),
             ctrl: self.ctrl_out_num.map(|num| CtrlResponse {
-                data: vec![num, if self.state { 0x7f } else { 0x00 }]
+                data: vec![num, if new_state { 0x7f } else { 0x00 }]
             }),
             midi: self.midi.map(|midi| {
                 let data = match midi.kind {
@@ -122,7 +124,7 @@ impl OnOffLogic {
                         vec![
                             0b10110000 | midi.channel,
                             midi.num,
-                            if self.state { 0x7f } else { 0x00 }
+                            if new_state { 0x7f } else { 0x00 }
                         ]
                     }
                 };
@@ -163,10 +165,12 @@ impl CtrlLogic for OnOffLogic {
         let mut new_state = self.state;
         let mut send_ctrl = true;
         let mut send_osc = true;
+        let mut remember = true;
         match self.mode {
             OnOffMode::Raw => {
                 new_state = pressed;
                 send_ctrl = false;
+                remember = false;
             },
             OnOffMode::Momentary => {
                 new_state = pressed;
@@ -181,7 +185,7 @@ impl CtrlLogic for OnOffLogic {
             }
         }
 
-        let mut response = self.update(new_state);
+        let mut response = self.update(new_state, remember);
 
         if !send_ctrl {
             response.ctrl = None;
@@ -211,9 +215,9 @@ impl CtrlLogic for OnOffLogic {
             return None;
         };
 
-        self.update(val != 0.0)
-            .ctrl
-            .map(|r| r.into())
+        let mut response = Response::new();
+        response.ctrl = self.update(val != 0.0, true).ctrl;
+        Some(response)
     }
 
     fn handle_midi(&mut self, msg: &[u8]) -> Option<Response> {
@@ -241,9 +245,9 @@ impl CtrlLogic for OnOffLogic {
             return None;
         }
 
-        self.update(val != 0)
-            .ctrl
-            .map(|r| r.into())
+        let mut response = Response::new();
+        response.ctrl = self.update(val != 0, true).ctrl;
+        Some(response)
     }
 }
 
@@ -440,9 +444,9 @@ impl CtrlLogic for RelativeLogic {
 
         let new_state = float_to_7bit(val);
 
-        self.update(new_state)
-            .ctrl
-            .map(|r| r.into())
+        let mut response = Response::new();
+        response.ctrl = self.update(new_state).ctrl;
+        Some(response)
     }
 
     fn handle_midi(&mut self, msg: &[u8]) -> Option<Response> {
@@ -470,9 +474,9 @@ impl CtrlLogic for RelativeLogic {
             return None;
         }
 
-        self.update(val)
-            .ctrl
-            .map(|r| r.into())
+        let mut response = Response::new();
+        response.ctrl = self.update(val).ctrl;
+        Some(response)
     }
 }
 
