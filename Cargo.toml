@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.9", features = ["derive"] }
+colog = "1.3.0"
+log = "0.4.22"
 midir = "0.9.1"
 rosc = "~0.10"
 rusb = "0.9"

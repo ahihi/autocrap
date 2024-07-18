@@ -2,7 +2,8 @@ use std::{
     error::Error,
     fs::File,
     io::BufReader,
-    net::{UdpSocket},
+    net::UdpSocket,
+    path::PathBuf,
     sync::{
         Arc, RwLock,
         mpsc
@@ -12,6 +13,9 @@ use std::{
     vec::Vec
 };
 
+use clap::Parser;
+use colog;
+use log::{error, warn, info, debug, trace};
 use midir::{
     MidiInput, MidiOutput,
     os::unix::{VirtualInput, VirtualOutput}
@@ -47,15 +51,35 @@ struct Endpoint {
     direction: Direction,
 }
 
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Options {
+    /// Set a config file
+    #[arg(short, long, value_name = "FILE")]
+    config: PathBuf,
+
+    /// Set logging level
+    #[arg(short, long)]
+    log: Option<String>,
+}
+
 fn main() {
     run().unwrap();
 }
 
 fn run() -> Result<()> {
-    let file = File::open("nocturn-midi.json")?;
+    let options = Options::parse();
+
+    let mut colog_builder = colog::default_builder();
+    if let Some(ref filters_str) = options.log {
+        colog_builder.parse_filters(filters_str);
+    }
+    colog_builder.init();
+
+    let file = File::open(&options.config)?;
     let reader = BufReader::new(file);
     let config: Config = serde_json::from_reader(reader)?;
-    println!("config: {:?}", config);
+    info!("config: {:?}", config);
 
     let mut context = Context::new().unwrap();
 
@@ -65,25 +89,25 @@ fn run() -> Result<()> {
 
             let languages = handle.read_languages(DEFAULT_TIMEOUT).unwrap();
 
-            println!("active configuration: {}", handle.active_configuration().unwrap());
-            println!("languages: {:?}", languages);
+            info!("active configuration: {}", handle.active_configuration().unwrap());
+            info!("languages: {:?}", languages);
 
             if !languages.is_empty() {
                 let language = languages[0];
 
-                println!(
+                info!(
                     "manufacturer: {:?}",
                     handle
                         .read_manufacturer_string(language, &device_desc, DEFAULT_TIMEOUT)
                         .ok()
                 );
-                println!(
+                info!(
                     "product: {:?}",
                     handle
                         .read_product_string(language, &device_desc, DEFAULT_TIMEOUT)
                         .ok()
                 );
-                println!(
+                info!(
                     "serial number: {:?}",
                     handle
                         .read_serial_number_string(language, &device_desc, DEFAULT_TIMEOUT)
@@ -96,8 +120,8 @@ fn run() -> Result<()> {
             let ctrl_out_endpoint = find_endpoint(&mut device, &device_desc, |e| e.config == config.out_endpoint && e.transfer_type == TransferType::Interrupt && e.direction == Direction::Out)
                 .ok_or("control out endpoint not found").unwrap();
 
-            println!("control in endpoint: {:?}", ctrl_in_endpoint);
-            println!("control out endpoint: {:?}", ctrl_out_endpoint);
+            info!("control in endpoint: {:?}", ctrl_in_endpoint);
+            info!("control out endpoint: {:?}", ctrl_out_endpoint);
 
             handle.set_auto_detach_kernel_driver(true).unwrap();
 
@@ -132,7 +156,7 @@ fn run() -> Result<()> {
                 // handle.write_interrupt(ctrl_out_endpoint.address, &[0x00, 0x00], DEFAULT_TIMEOUT)?;
             });
         }
-        None => println!("could not find device {:04x}:{:04x}", config.vendor_id, config.product_id),
+        None => error!("could not find device {:04x}:{:04x}", config.vendor_id, config.product_id),
     }
 
     Ok(())
@@ -213,7 +237,7 @@ fn configure_endpoint<T: UsbContext>(
     endpoint: &Endpoint,
 ) -> Result<()> {
     // handle.set_active_configuration(endpoint.config)?;
-    println!("configure_endpoint {:?}", endpoint);
+    info!("configure_endpoint {:?}", endpoint);
     handle.claim_interface(endpoint.iface)?;
     // handle.set_alternate_setting(endpoint.iface, endpoint.setting)?;
     Ok(())
@@ -259,7 +283,7 @@ fn run_reader<T: UsbContext>(
             continue;
         };
 
-        // println!("read({:?}): {:02x?}", num_bytes, &all_bytes[..num_bytes]);
+        trace!("read({:?}): {:02x?}", num_bytes, &all_bytes[..num_bytes]);
         let mut i = 0;
         while i+1 < num_bytes {
             if all_bytes[i] == 0xb0 {
@@ -270,13 +294,13 @@ fn run_reader<T: UsbContext>(
             let bytes = &all_bytes[i..i+2];
             i += 2;
 
-            // println!("bytes: {:02x?}", bytes);
+            trace!("bytes: {:02x?}", bytes);
 
             let num = bytes[0];
             let val = bytes[1];
 
             let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) else {
-                println!("unhandled data: {:02x?}", bytes);
+                warn!("unhandled data: {:02x?}", bytes);
                 continue;
             };
 
@@ -286,7 +310,7 @@ fn run_reader<T: UsbContext>(
                         addr: addr,
                         args: args,
                     });
-                    // println!("osc out: {:?}", msg);
+                    debug!("send osc: {:?}", msg);
                     let msg_buf = encoder::encode(&msg)?;
 
                     sock.send_to(&msg_buf, out_addr)?;
@@ -295,13 +319,12 @@ fn run_reader<T: UsbContext>(
 
             if let Some((_, out_conn)) = midi.as_mut() {
                 if let Some(MidiResponse { data }) = response.midi {
-                    // println!("send midi: {:02x?}", data);
+                    debug!("send midi: {:02x?}", data);
                     out_conn.send(&data)?;
                 }
             }
 
             if let Some(CtrlResponse { data }) = response.ctrl {
-                // println!("ctrl: {:02x?}", data);
                 ctrl_tx.send(data)?;
             }
         }
@@ -314,9 +337,9 @@ fn run_writer<T: UsbContext>(
     ctrl_rx: mpsc::Receiver<Vec<u8>>
 ) -> Result<()> {
     loop {
-        let ctrl_out = ctrl_rx.recv()?;
-        // println!("ctrl out: {:02x?}", ctrl_out);
-        handle.write_interrupt(endpoint.address, &ctrl_out, DEFAULT_TIMEOUT)?;
+        let data = ctrl_rx.recv()?;
+        debug!("send ctrl: {:02x?}", data);
+        handle.write_interrupt(endpoint.address, &data, DEFAULT_TIMEOUT)?;
     }
 }
 
@@ -330,7 +353,7 @@ fn run_osc_receiver(
     };
 
     let sock = UdpSocket::bind(in_addr)?;
-    println!("listening to {}", in_addr);
+    info!("listening to {}", in_addr);
 
     let mut buf = [0u8; rosc::decoder::MTU];
     loop {
@@ -339,13 +362,13 @@ fn run_osc_receiver(
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
                 match packet {
                     OscPacket::Message(msg) => {
-                        // println!("osc in: {} {:?}", msg.addr, msg.args);
+                        debug!("recv osc: {} {:?}", msg.addr, msg.args);
                         let Some(response) = interpreter.write().unwrap().handle_osc(&msg) else {
-                            println!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
+                            warn!("unhandled osc message: with size {} from {}: {} {:?}", size, addr, msg.addr, msg.args);
                             continue;
                         };
 
-                        // println!("osc in response: {:?}", response);
+                        trace!("osc in response: {:?}", response);
 
                         let Some(CtrlResponse { data }) = response.ctrl else {
                             continue;
@@ -354,12 +377,13 @@ fn run_osc_receiver(
                         ctrl_tx.send(data)?
                     }
                     OscPacket::Bundle(bundle) => {
-                        println!("OSC Bundle: {:?}", bundle);
+                        debug!("recv osc bundle: {:?}", bundle);
+                        warn!("unhandled osc bundle: {:?}", bundle);
                     }
                 }
             }
             Err(e) => {
-                println!("error receiving from socket: {}", e);
+                error!("error receiving from socket: {}", e);
                 break;
             }
         }
@@ -411,13 +435,13 @@ fn run_midi_receiver(
     };
 
     if let None = midi {
-        println!("no midi in port???");
+        warn!("no midi in port???");
     }
 
     loop {
         let msg = rx.recv().unwrap();
         let Some(response) = interpreter.write().unwrap().handle_midi(&msg) else {
-            println!("unhandled midi message: {:?}", msg);
+            warn!("unhandled midi message: {:?}", msg);
             continue;
         };
 

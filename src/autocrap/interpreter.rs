@@ -1,3 +1,4 @@
+use log::{warn, info};
 use rosc::{OscMessage, OscType};
 
 use super::config::{Config, CtrlKind, Mapping, MidiKind, MidiSpec, OnOffMode, RelativeMode};
@@ -29,11 +30,11 @@ impl Interpreter {
                 }
 
                 let Some(logic) = logic_opt else {
-                    println!("warning: unhandled mapping {:?}", mapping);
+                    warn!("unhandled mapping {:?}", mapping);
                     continue;
                 };
 
-                println!("info: adding {:?}", logic);
+                info!("adding {:?}", logic);
                 ctrls.push(logic);
             }
         }
