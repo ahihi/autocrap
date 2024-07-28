@@ -1,0 +1,82 @@
+# inspired by https://github.com/shssoichiro/oxipng/blob/15ecc9ed00199f1fbfe0989d67a43ff3e6faff6a/.github/workflows/oxipng.yml
+name: build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: build
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          # - x86_64-unknown-linux-musl
+          # - aarch64-unknown-linux-gnu
+          # - aarch64-unknown-linux-musl
+          - x86_64-pc-windows-msvc
+          # - i686-pc-windows-msvc
+          - x86_64-apple-darwin
+          # - aarch64-apple-darwin
+
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            target-apt-arch: amd64
+          # - target: x86_64-unknown-linux-musl
+          #   os: ubuntu-latest
+          #   target-apt-arch: amd64
+          # - target: aarch64-unknown-linux-gnu
+          #   os: ubuntu-latest
+          #   target-apt-arch: arm64
+          # - target: aarch64-unknown-linux-musl
+          #   os: ubuntu-latest
+          #   target-apt-arch: arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # - target: i686-pc-windows-msvc
+          #   os: windows-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          # - target: aarch64-apple-darwin
+          #   os: macos-latest
+
+    env:
+      PROJECT_NAME: autocrap
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      CARGO_TERM_COLOR: always
+      MACOSX_DEPLOYMENT_TARGET: 10.12
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: cache apt packages
+        if: startsWith(matrix.os, 'ubuntu')
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libasound2-dev
+          version: 1.0
+
+      - name: setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+          rustflags:
+
+      - name: build
+        run: cargo build --verbose
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/debug/${{ env.PROJECT_NAME }}
