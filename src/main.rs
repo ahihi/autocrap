@@ -453,7 +453,7 @@ fn run_midi_receiver(
     loop {
         let msg = rx.recv().unwrap();
         let Some(response) = interpreter.write().unwrap().handle_midi(&msg) else {
-            warn!("unhandled midi message: {:?}", msg);
+            warn!("unhandled midi message: {:02x?}", msg);
             continue;
         };
 
