@@ -80,3 +80,4 @@ jobs:
           name: ${{ env.PROJECT_NAME }}-${{ matrix.target }}
           path: |
             target/${{ matrix.target }}/debug/${{ env.PROJECT_NAME }}
+            target/${{ matrix.target }}/debug/${{ env.PROJECT_NAME }}.exe
