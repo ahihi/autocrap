@@ -8,9 +8,9 @@ autocrap is highly configurable to support different use cases, ranging from typ
 
 ## compatibility
 
-- macOS (tested with 10.14)
+- macOS 10.12+ (tested with 10.14)
 - Linux (tested with Debian 12)
-- Windows? (not tested yet)
+- Windows (tested with Windows 10)
 - possibly other platforms supported by Rust and libusb
 
 ## installation
