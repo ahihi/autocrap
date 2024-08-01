@@ -1,0 +1,89 @@
+# inspired by https://github.com/shssoichiro/oxipng/blob/15ecc9ed00199f1fbfe0989d67a43ff3e6faff6a/.github/workflows/deploy.yml
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    name: release
+
+    runs-on: ubuntu-latest
+
+    # Prevent job from running on forks
+    if: ${{ !github.event.repository.fork }}
+
+    strategy:
+      matrix:
+        platform:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            name: linux-aarch64
+          - target: x86_64-pc-windows-msvc
+            name: windows-x86_64
+          - target: i686-pc-windows-msvc
+            name: windows-i686
+          - target: x86_64-apple-darwin
+            name: macos-x86_64
+          - target: aarch64-apple-darwin
+            name: macos-aarch64
+
+    env:
+      PROJECT_NAME: autocrap
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: get version
+        id: meta
+        run: |
+          version=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "'"$PROJECT_NAME"'").version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: retrieve ${{ matrix.platform.target }} binary
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build.yml
+          commit: ${{ env.GITHUB_SHA }}
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.platform.target }}
+          path: target
+
+      - name: build archives
+        working-directory: target
+        run: |
+          ARCHIVE_NAME='${{ env.PROJECT_NAME }}-${{ steps.meta.outputs.version }}-${{ matrix.platform.name }}'
+          echo "ARCHIVE_NAME=$ARCHIVE_NAME"
+
+          mkdir "$ARCHIVE_NAME"
+
+          cp -a ../config "$ARCHIVE_NAME/config"
+
+          case '${{ matrix.platform.target }}' in
+            *-windows-*)
+              cp -a "${PROJECT_NAME}.exe" "$ARCHIVE_NAME"
+              zip "${ARCHIVE_NAME}.zip" "$ARCHIVE_NAME"/*
+              ;;
+            *)
+              cp -a "$PROJECT_NAME" "$ARCHIVE_NAME"
+              # fix permissions https://github.com/actions/toolkit/issues/1722
+              chmod ugo+x "$ARCHIVE_NAME"/"$PROJECT_NAME"
+              tar czvf "${ARCHIVE_NAME}.tar.gz" "$ARCHIVE_NAME"/*
+              ;;
+          esac
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.meta.outputs.version }}
+          # body_path: RELEASE_NOTES.txt
+          files: |
+            target/*.zip
+            target/*.tar.gz
