@@ -125,7 +125,6 @@ fn run() -> Result<()> {
             info!("control in endpoint: {:?}", ctrl_in_endpoint);
             info!("control out endpoint: {:?}", ctrl_out_endpoint);
 
-
             match handle.set_auto_detach_kernel_driver(true) {
                 ok@Ok(()) => Ok(()),
                 Err(rusb::Error::NotSupported) => Ok(()),

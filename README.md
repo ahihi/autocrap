@@ -21,11 +21,19 @@ binaries coming soon! in the meantime, see [building](#building).
 
 autocrap requires a configuration JSON file to run. some [example configurations](config) are provided.
 
+> [!NOTE]
+> there are some OS-specific considerations, please see the following sections:
+>
+> - [Linux](#linux)
+> - [Windows](#windows)
+
 for example, to use the Nocturn as a typical MIDI controller, run:
 
 ```shell
 autocrap -c config/nocturn-midi.json
 ```
+
+on Windows, you also need to install a generic USB driver to allow autocrap to communicate with the controller. for example, install the WinUSB driver using [Zadig](https://zadig.akeo.ie/).
 
 MIDI compatible applications on your computer should now see virtual input/output ports for autocrap!
 
@@ -42,6 +50,46 @@ Options:
 ```
 
 the logging level defaults to `info`. you can also set it to `debug` or `trace` to get more debugging information.
+
+### Linux
+
+#### device permissions
+
+on Linux, your user must have permission to access the USB device. you may need to create a udev rule to set the permissions. the following instructions apply to Debian, but can hopefully be easily adapted to other distros.
+
+create the file `/etc/udev/rules.d/51-nocturn.rules` with the contents:
+
+```
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1235", ATTRS{idProduct}=="000a", MODE="0666"
+```
+
+then reload udev rules by running:
+
+```shell
+sudo udevadm control --reload-rules
+```
+
+and you should be good to go!
+
+### Windows
+
+#### generic driver
+
+on Windows, you must also install a generic USB driver for the device in order to allow autocrap to communicate with it. for example, you can use [Zadig](https://zadig.akeo.ie/) to install the WinUSB driver.
+
+#### no support for virtual MIDI ports
+
+due to limitations in the midir library, virtual MIDI ports are currently unsupported on Windows. as an alternative, you can use [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html). in loopMIDI, create two virtual ports named `autocrap in` and `autocrap out`, then reference them using `Name` ports in your configuration:
+
+```
+  "interface": {"Midi": {
+    "client_name": "autocrap",
+    "out_port": {"Name": "autocrap out"},
+    "in_port": {"Name": "autocrap in"}
+  }}
+```
+
+see also the [section on MIDI configuration](#midi).
 
 ## configuration
 
