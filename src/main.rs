@@ -18,8 +18,10 @@ use colog;
 use log::{error, warn, info, debug, trace};
 use midir::{
     MidiInput, MidiOutput,
-    os::unix::{VirtualInput, VirtualOutput}
 };
+#[cfg(unix)]
+use midir::os::unix::{VirtualInput, VirtualOutput};
+
 use rosc::encoder;
 use rosc::{OscMessage, OscPacket};
 
@@ -267,8 +269,13 @@ fn run_reader<T: UsbContext>(
             MidiPort::Name(ref name) =>
                 midi_out.ports().into_iter().find(|p| &midi_out.port_name(&p).unwrap() == name)
                 .map(|p| (midi_out.port_name(&p).unwrap(), midi_out.connect(&p, client_name).unwrap())),
+            #[cfg(unix)]
             MidiPort::Virtual(ref name) =>
-                Some((client_name.to_string(), midi_out.create_virtual(client_name).unwrap()))
+                Some((client_name.to_string(), midi_out.create_virtual(client_name).unwrap())),
+            #[cfg(not(unix))]
+            MidiPort::Virtual(ref name) => {
+                unimplemented!("virtual midi ports are currently unsupported on non-unix systems")
+            }
         }
     } else {
         None
@@ -424,6 +431,7 @@ fn run_midi_receiver(
                 },
                 tx
             ).unwrap())),
+        #[cfg(unix)]
         MidiPort::Virtual(ref name) =>
             Some((client_name.to_string(), midi_in.create_virtual(
                 client_name,
@@ -431,7 +439,11 @@ fn run_midi_receiver(
                     tx.send(msg.to_vec()).unwrap();
                 },
                 tx
-            ).unwrap()))
+            ).unwrap())),
+        #[cfg(not(unix))]
+        MidiPort::Virtual(ref name) => {
+            unimplemented!("virtual midi ports are currently unsupported on non-unix systems")
+        }
     };
 
     if let None = midi {
