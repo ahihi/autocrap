@@ -19,21 +19,19 @@ binaries coming soon! in the meantime, see [building](#building).
 
 ## usage
 
-autocrap requires a configuration JSON file to run. some [example configurations](config) are provided.
-
 > [!NOTE]
 > there are some OS-specific considerations, please see the following sections:
 >
 > - [Linux](#linux)
 > - [Windows](#windows)
 
+autocrap requires a configuration JSON file to run. some [example configurations](config) are provided.
+
 for example, to use the Nocturn as a typical MIDI controller, run:
 
 ```shell
 autocrap -c config/nocturn-midi.json
 ```
-
-on Windows, you also need to install a generic USB driver to allow autocrap to communicate with the controller. for example, install the WinUSB driver using [Zadig](https://zadig.akeo.ie/).
 
 MIDI compatible applications on your computer should now see virtual input/output ports for autocrap!
 
