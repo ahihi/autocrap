@@ -15,7 +15,7 @@ autocrap is highly configurable to support different use cases, ranging from typ
 
 ## installation
 
-binaries coming soon! in the meantime, see [building](#building).
+download a prebuilt binary from [Releases](https://github.com/ahihi/autocrap/releases), or [build](#building) it yourself!
 
 ## usage
 
