@@ -17,7 +17,7 @@
         "ctrl_out_num": 64,
         "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
         "midi": {
-          "channel": 0,
+          "channel": 13,
           "kind": "Cc",
           "num": 64
         }
@@ -26,13 +26,13 @@
     {"Range": {
       "count": 8,
       "mapping": {
-        "name": "knobTouch{i}",
-        "ctrl_in_num": 96,
+        "name": "knob{i}Touch",
+        "ctrl_in_num": 95,
         "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
         "midi": {
-          "channel": 0,
+          "channel": 13,
           "kind": "Cc",
-          "num": 96
+          "num": 95
         }
       }
     }},
@@ -44,7 +44,7 @@
         "ctrl_out_num": 112,
         "ctrl_kind": {"OnOff": {"mode": "Toggle"}},
         "midi": {
-          "channel": 0,
+          "channel": 13,
           "kind": "Cc",
           "num": 112
         }
@@ -55,7 +55,7 @@
       "ctrl_in_sequence": [72, 73],
       "ctrl_kind": "EightBit",
       "midi": {
-        "channel": 0,
+        "channel": 13,
         "kind": "Cc",
         "num": 72
       }
@@ -65,7 +65,7 @@
       "ctrl_in_num": 83,
       "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
       "midi": {
-        "channel": 0,
+        "channel": 13,
         "kind": "Cc",
         "num": 83
       }
@@ -76,9 +76,19 @@
       "ctrl_out_num": 80,
       "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
       "midi": {
-        "channel": 0,
+        "channel": 13,
         "kind": "Cc",
         "num": 74
+      }
+    }},
+    {"Single": {
+      "name": "speedDialTouch",
+      "ctrl_in_num": 82,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "midi": {
+        "channel": 13,
+        "kind": "Cc",
+        "num": 82
       }
     }},
     {"Single": {
@@ -86,7 +96,7 @@
       "ctrl_in_num": 81,
       "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
       "midi": {
-        "channel": 0,
+        "channel": 13,
         "kind": "Cc",
         "num": 81
       }

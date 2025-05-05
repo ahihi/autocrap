@@ -260,6 +260,30 @@ since the device sends the high and low bits with different control numbers, the
 
 note that when using the MIDI interface, this value is currently reduced to 7 bits to fit in a CC message. with OSC, no such reduction happens.
 
+
+###### `Notes`
+
+```
+{
+  "name": "PlayButton",
+  "ctrl_in_num": 86,
+  "ctrl_out_num": 86,
+  "ctrl_kind": { "OnOff": { "mode": "Momentary" } },
+  "midi": {
+    "channel": 0,
+    "kind": "NoteOnOff", // Use NoteOnOff here
+    "num": 60           // MIDI Note number (e.g., C4)
+  }
+}
+```
+
+adds midi note support to on/off (momentary)
+
+`num` specifies the note number which will be sent for example 60 (will result in C4)
+
+
+
+
 ##### `midi`
 
 specifies the MIDI message corresponding to the control.
