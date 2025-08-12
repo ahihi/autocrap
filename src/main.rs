@@ -118,7 +118,7 @@ fn run() -> Result<()> {
             }
 
             let ctrl_in_endpoint = find_endpoint(&mut device, &device_desc, |e| e.config == config.in_endpoint && e.transfer_type == TransferType::Interrupt && e.direction == Direction::In)
-                .ok_or("control out endpoint not found").unwrap();
+                .ok_or("control in endpoint not found").unwrap();
             let ctrl_out_endpoint = find_endpoint(&mut device, &device_desc, |e| e.config == config.out_endpoint && e.transfer_type == TransferType::Interrupt && e.direction == Direction::Out)
                 .ok_or("control out endpoint not found").unwrap();
 
