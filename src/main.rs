@@ -126,7 +126,7 @@ fn run() -> Result<()> {
             info!("control out endpoint: {:?}", ctrl_out_endpoint);
 
             match handle.set_auto_detach_kernel_driver(true) {
-                ok@Ok(()) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(rusb::Error::NotSupported) => Ok(()),
                 err => err
             }.unwrap();
@@ -274,10 +274,10 @@ fn run_reader<T: UsbContext>(
                 midi_out.ports().into_iter().find(|p| &midi_out.port_name(&p).unwrap() == name)
                 .map(|p| (midi_out.port_name(&p).unwrap(), midi_out.connect(&p, client_name).unwrap())),
             #[cfg(unix)]
-            MidiPort::Virtual(ref name) =>
+            MidiPort::Virtual(ref _name) =>
                 Some((client_name.to_string(), midi_out.create_virtual(client_name).unwrap())),
             #[cfg(not(unix))]
-            MidiPort::Virtual(ref name) => {
+            MidiPort::Virtual(ref _name) => {
                 unimplemented!("virtual midi ports are currently unsupported on non-unix systems")
             }
         }
@@ -436,7 +436,7 @@ fn run_midi_receiver(
                 tx
             ).unwrap())),
         #[cfg(unix)]
-        MidiPort::Virtual(ref name) =>
+        MidiPort::Virtual(ref _name) =>
             Some((client_name.to_string(), midi_in.create_virtual(
                 client_name,
                 move |_time, msg, tx| {
@@ -445,7 +445,7 @@ fn run_midi_receiver(
                 tx
             ).unwrap())),
         #[cfg(not(unix))]
-        MidiPort::Virtual(ref name) => {
+        MidiPort::Virtual(ref _name) => {
             unimplemented!("virtual midi ports are currently unsupported on non-unix systems")
         }
     };
@@ -467,6 +467,4 @@ fn run_midi_receiver(
 
         ctrl_tx.send(data)?
     }
-
-    Ok(())
 }
