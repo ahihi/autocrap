@@ -80,7 +80,7 @@ jobs:
           esac
 
       - name: create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.2.1
         with:
           name: v${{ steps.meta.outputs.version }}
           # body_path: RELEASE_NOTES.txt
