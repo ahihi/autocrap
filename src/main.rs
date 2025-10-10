@@ -311,7 +311,7 @@ fn run_reader<T: UsbContext>(
             let val = bytes[1];
 
             let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) else {
-                warn!("unhandled data: {:02x?}", bytes);
+                info!("unrecognized midi controller #{}: value {}", num, val);
                 continue;
             };
 
