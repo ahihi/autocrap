@@ -59,6 +59,11 @@ pub struct Mapping {
     pub ctrl_out_num: Option<u8>,
     pub ctrl_kind: CtrlKind,
     pub midi: Option<MidiSpec>,
+    /// multiplier applied to each raw encoder tick before accumulating,
+    /// for `Relative`/`Accumulate` controls. defaults to 1 (raw device
+    /// behaviour) when omitted.
+    #[serde(default)]
+    pub step: Option<u8>,
 }
 
 impl Mapping {
@@ -70,6 +75,7 @@ impl Mapping {
             ctrl_out_num: self.ctrl_out_num.map(|n| n+i),
             ctrl_kind: self.ctrl_kind,
             midi: self.midi.map(|m| m.index(i)),
+            step: self.step,
         }
     }
 

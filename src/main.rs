@@ -87,6 +87,12 @@ fn run() -> Result<()> {
 
     match open_device(&mut context, config.vendor_id, config.product_id) {
         Some((mut device, device_desc, mut handle)) => {
+            // NOTE: on macOS, a real USB bus reset here makes the device
+            // re-enumerate and invalidates this handle, causing intermittent
+            // claim_interface() failures (NotFound/NoDevice) afterwards.
+            // The device is already in a usable configured state after
+            // open_device(), so skip the reset on macOS.
+            #[cfg(not(target_os = "macos"))]
             handle.reset().unwrap();
 
             let languages = handle.read_languages(DEFAULT_TIMEOUT).unwrap();
@@ -130,6 +136,14 @@ fn run() -> Result<()> {
                 Err(rusb::Error::NotSupported) => Ok(()),
                 err => err
             }.unwrap();
+
+            // the device can end up reporting an "unconfigured" active
+            // configuration (0), e.g. after a previous run didn't clean up.
+            // explicitly (re)select a configuration so claim_interface()
+            // below has something to claim. config 1 and config 2 expose
+            // identical interface/endpoint layouts on this device, so
+            // ctrl_in_endpoint's configuration works for both.
+            handle.set_active_configuration(ctrl_in_endpoint.config).unwrap();
 
             configure_endpoint(&mut handle, &ctrl_in_endpoint).unwrap();
             configure_endpoint(&mut handle, &ctrl_out_endpoint).unwrap();

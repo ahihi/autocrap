@@ -331,6 +331,7 @@ pub struct RelativeLogic {
     ctrl_out_num: Option<u8>,
     midi: Option<MidiSpec>,
     osc_addr: String,
+    step: u8,
     state: u8
 }
 
@@ -397,6 +398,7 @@ impl CtrlLogic for RelativeLogic {
             ctrl_out_num: mapping.ctrl_out_num,
             midi: mapping.midi,
             osc_addr: mapping.osc_addr(),
+            step: mapping.step.unwrap_or(1),
             state: 0x00
         }))
     }
@@ -419,7 +421,12 @@ impl CtrlLogic for RelativeLogic {
                 }.into()
             },
             RelativeMode::Accumulate => {
-                self.update(self.state.saturating_add_signed(delta).min(127))
+                // scale the raw per-detent tick by `step` so the control
+                // reaches its full range in fewer physical turns. clamp
+                // through i32 first so a large step can't wrap the i8 delta.
+                let scaled_delta = (delta as i32 * self.step as i32)
+                    .clamp(i8::MIN as i32, i8::MAX as i32) as i8;
+                self.update(self.state.saturating_add_signed(scaled_delta).min(127))
             }
         };
 
