@@ -8,6 +8,7 @@ mod on_off_logic;
 mod osc_response;
 mod relative_logic;
 mod response;
+mod reversal_filter_state;
 
 pub use bank_assignment::{BankAssignment, build_bank_assignments};
 pub use ctrl_logic::CtrlLogic;
@@ -19,3 +20,4 @@ pub use on_off_logic::OnOffLogic;
 pub use osc_response::OscResponse;
 pub use relative_logic::RelativeLogic;
 pub use response::Response;
+pub use reversal_filter_state::ReversalFilterState;

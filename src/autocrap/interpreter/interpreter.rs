@@ -1,7 +1,7 @@
 use log::{warn, info};
 use rosc::OscMessage;
 
-use crate::autocrap::config::{BankSelectorMapping, Config, Mapping};
+use crate::autocrap::config::{BankSelectorMapping, Config, DeviceCalibration, Mapping};
 
 use super::{CtrlLogic, CtrlResponse, EightBitLogic, OnOffLogic, RelativeLogic, Response};
 
@@ -19,7 +19,7 @@ pub struct Interpreter {
 
 impl Interpreter {
     /// Builds one logic object per control described by the config.
-    pub fn new(config: &Config) -> Interpreter {
+    pub fn new(config: &Config, calibration: &DeviceCalibration) -> Interpreter {
         let bank_selector = config.bank_selector();
         let bank_count = bank_selector.map_or(1, |selector| selector.bank_count);
 
@@ -31,6 +31,7 @@ impl Interpreter {
         let mut ctrls: Vec<Box<dyn CtrlLogic>> = vec![];
         for abstract_mapping in config.mappings.iter() {
             for mapping in abstract_mapping.expand_iter() {
+                let mapping = calibration.applied_to(mapping);
                 let mut logic_opt: Option<Box<dyn CtrlLogic>> = None;
 
                 for make_logic in &constructors {
@@ -92,6 +93,33 @@ impl Interpreter {
         let mut device_writes = self.build_bank_indicator_writes();
         for ctrl in &mut self.ctrls {
             device_writes.extend(ctrl.switch_to_bank(self.active_bank_index));
+        }
+
+        device_writes
+    }
+
+    /// Which bank is currently active, for front ends that display it.
+    pub fn active_bank_index(&self) -> u8 {
+        self.active_bank_index
+    }
+
+    /// How many banks this config cycles through, or zero when banking is not configured.
+    pub fn bank_count(&self) -> u8 {
+        self.bank_selector.map_or(0, |bank_selector| bank_selector.bank_count)
+    }
+
+    /// Every write needed to make a freshly connected device show the state held here.
+    ///
+    /// A replug clears the hardware but leaves this interpreter's values intact, so the
+    /// two have to be reconciled explicitly rather than waiting for the user to touch
+    /// every control.
+    pub fn build_device_refresh_writes(&self) -> Vec<Response> {
+        let mut device_writes = self.build_bank_indicator_writes();
+
+        for ctrl in self.ctrls.iter() {
+            if let Some(indicator_write) = ctrl.build_current_indicator_write() {
+                device_writes.push(indicator_write.into());
+            }
         }
 
         device_writes
@@ -175,7 +203,7 @@ mod tests {
         }}"#, mappings_json);
         let config: Config = serde_json::from_str(&config_json).unwrap();
         config.validate().unwrap();
-        Interpreter::new(&config)
+        Interpreter::new(&config, &DeviceCalibration::default())
     }
 
     /// A four-bank device with one banked knob, one unbanked knob, a banked

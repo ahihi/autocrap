@@ -1,4 +1,5 @@
 {
+  "name": "OSC (raw)",
   "vendor_id": 4661,
   "product_id": 10,
   "in_endpoint": 1,

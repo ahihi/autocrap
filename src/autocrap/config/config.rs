@@ -5,6 +5,10 @@ use super::{AbstractMapping, BankSelectorMapping, Interface};
 /// Everything autocrap needs to talk to one device: the whole config file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    /// Human-readable label for this config, shown by front ends that let the
+    /// user pick between several. Falls back to the filename when absent.
+    #[serde(default)]
+    pub name: Option<String>,
     pub vendor_id: u16,
     pub product_id: u16,
     pub in_endpoint: u8,
@@ -14,6 +18,26 @@ pub struct Config {
 }
 
 impl Config {
+    /// Every control number that drives an indicator, in ascending order.
+    ///
+    /// Includes the bank selector's own lights, which are not ordinary mappings but
+    /// are still lights on the device.
+    pub fn indicator_control_numbers(&self) -> Vec<u8> {
+        let mut indicator_control_numbers: Vec<u8> = self.mappings.iter()
+            .flat_map(|abstract_mapping| abstract_mapping.expand_iter())
+            .filter_map(|mapping| mapping.ctrl_out_num)
+            .collect();
+
+        if let Some(bank_selector) = self.bank_selector() {
+            indicator_control_numbers.push(bank_selector.previous_bank_button.led_control_number);
+            indicator_control_numbers.push(bank_selector.next_bank_button.led_control_number);
+        }
+
+        indicator_control_numbers.sort();
+        indicator_control_numbers.dedup();
+        indicator_control_numbers
+    }
+
     /// Returns the config's bank selector, if banking is configured at all.
     pub fn bank_selector(&self) -> Option<BankSelectorMapping> {
         self.mappings.iter().find_map(|mapping| match mapping {

@@ -1,4 +1,5 @@
 {
+  "name": "4 Banks",
   "vendor_id": 4661,
   "product_id": 10,
   "in_endpoint": 1,
@@ -21,7 +22,6 @@
         "ctrl_in_num": 64,
         "ctrl_out_num": 64,
         "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
-        "step": 3,
         "bank_midi_targets": [
           {"channel": 0, "kind": "Cc", "num": 64},
           {"channel": 0, "kind": "Cc", "num": 16},
@@ -132,7 +132,6 @@
       "ctrl_in_num": 74,
       "ctrl_out_num": 80,
       "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
-      "step": 3,
       "bank_midi_targets": [
         {"channel": 0, "kind": "Cc", "num": 74},
         {"channel": 0, "kind": "Cc", "num": 52},

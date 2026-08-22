@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use super::{CtrlKind, MidiSpec};
+use super::{CtrlKind, MidiSpec, ReversalFilter};
 
 /// One physical control: where the device reports it, and where it sends.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -24,6 +24,10 @@ pub struct Mapping {
     /// Its presence opts the control into banking.
     #[serde(default)]
     pub bank_osc_addresses: Option<Vec<String>>,
+    /// Rejects the false reversals a worn `Relative` encoder reports. Omitted
+    /// means every tick is believed, which is right for a healthy control.
+    #[serde(default)]
+    pub reversal_filter: Option<ReversalFilter>,
 }
 
 impl Mapping {
@@ -45,6 +49,9 @@ impl Mapping {
                 .map(|addresses| addresses.iter()
                     .map(|address| address.replace("{i}", &i.to_string()))
                     .collect()),
+            // describes the physical encoder rather than its position in the
+            // range, so it is copied rather than transformed
+            reversal_filter: self.reversal_filter,
         }
     }
 

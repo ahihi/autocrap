@@ -1,0 +1,67 @@
+{
+  "controls": {
+    "64": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "65": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "66": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "67": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "68": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "69": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "70": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "71": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    },
+    "74": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    }
+  }
+}

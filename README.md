@@ -15,7 +15,45 @@ autocrap is highly configurable to support different use cases, ranging from typ
 
 ## installation
 
-download a prebuilt binary from [Releases](https://github.com/ahihi/autocrap/releases), or [build](#building) it yourself!
+a prebuilt binary is available from [Releases](https://github.com/ahihi/autocrap/releases). note that it is the command line tool only — the [macOS menu bar app](#macos-menu-bar-app) is built from source.
+
+to build everything yourself, see [getting started](#getting-started).
+
+## getting started
+
+you will need [Rust](https://www.rust-lang.org/tools/install). on macOS you will also need Xcode's command line tools, which you may already have:
+
+```shell
+xcode-select --install
+```
+
+then clone this repository and pick one of the two ways to run it.
+
+### macOS, from the Dock
+
+```shell
+./packaging/macos/build.sh
+```
+
+that builds autocrap and wraps it in `Autocrap.app` in the repository root. drag that app to the Dock once, and click it whenever you want autocrap running.
+
+there is no window. a glyph appears in the menu bar — that is how you know it is running — and its menu shows whether the Nocturn is connected, which bank you are on, and lets you switch config. plug the Nocturn in and it will play a light sweep to confirm it connected.
+
+> [!IMPORTANT]
+> leave the app in the repository folder. it finds the autocrap binary and your configs relative to its own location, so moving it elsewhere stops it working.
+
+see [macOS menu bar app](#macos-menu-bar-app) for the rest of it.
+
+### any platform, from a terminal
+
+```shell
+cargo build --release
+./target/release/autocrap -c config/nocturn-midi.json
+```
+
+MIDI compatible applications should now see virtual input and output ports for autocrap. stop it with Ctrl-C rather than killing it, so it releases the device cleanly.
+
+there are OS-specific steps on [Linux](#linux) and [Windows](#windows), and the [usage](#usage) section below covers the other configs and command line options.
 
 ## usage
 
@@ -56,10 +94,12 @@ to view the full list of supported command-line options, run `autocrap -h`:
 Usage: autocrap [OPTIONS] --config <FILE>
 
 Options:
-  -c, --config <FILE>  Set a config file
-  -l, --log <LOG>      Set logging level
-  -h, --help           Print help
-  -V, --version        Print version
+  -c, --config <FILE>       Set a config file
+  -l, --log <LOG>           Set logging level
+      --status              Print machine-readable status events to stdout, for a front end to read
+      --calibration <FILE>  Corrections for this particular device's faults, applied whichever config is loaded
+  -h, --help                Print help
+  -V, --version             Print version
 ```
 
 the logging level defaults to `info`. you can also set it to `debug` or `trace` to get more debugging information.
@@ -156,6 +196,14 @@ banking is opt-in per control, and nothing about it is hardcoded to particular b
 ## configuration
 
 the configuration is a JSON object with the following properties:
+
+### `name`
+
+```
+  "name": "4 banks",
+```
+
+optional. a human-readable label for the config as a whole, shown by front ends that let you pick between several, such as the [macOS menu bar app](#macos-menu-bar-app). when absent, the filename is used instead.
 
 ### USB device properties
 
@@ -363,7 +411,7 @@ optional. one MIDI message per bank, in bank order, each in the same form as [`m
 optional. one OSC address per bank, in bank order. the OSC equivalent of `bank_midi_targets`, and its presence opts the control into banking in exactly the same way.
 
 - the list must have exactly `bank_count` entries.
-- this **replaces** the address autocrap would otherwise derive from [`name`](#name), so the control answers to `/reverb` on bank 0 rather than to `/knob0`.
+- this **replaces** the address autocrap would otherwise derive from [`name`](#name-1), so the control answers to `/reverb` on bank 0 rather than to `/knob0`.
 - `EightBit` controls cannot use it, for the same reason as above.
 - it can be used on its own, or alongside `bank_midi_targets` if you want one config to serve both interfaces.
 
@@ -485,6 +533,151 @@ the current bank is shown across the two lights as a binary number, with the low
 both lights being off on bank 0 means the display is correct from the moment autocrap starts, with no extra initialisation.
 
 
+## connecting and reconnecting
+
+autocrap does not need the device to be plugged in when it starts, and does not
+stop when it is unplugged.
+
+- **starting without the device** waits for it rather than failing. plug the
+  Nocturn in whenever you like and it connects on its own.
+- **connecting plays a one second sweep** across every light on the device,
+  lighting each in turn and then unlighting them, before painting your actual
+  values. this is how you can tell at a glance that the connection really
+  worked, rather than finding out only when a control fails to do anything. it
+  doubles as a check that every lamp and LED ring still works.
+- **unplugging mid-session** is not fatal. the MIDI and OSC connections stay
+  open throughout, so applications connected to autocrap keep their connection
+  and do not have to be re-pointed at it.
+- **plugging back in** reconnects automatically, and the device is repainted
+  from the values autocrap still holds — so your bank and every control's
+  position survive a replug, even though the hardware itself lost them.
+- **stopping it with Ctrl-C** clears the lights and releases the device. this
+  matters: a process killed outright leaves the USB interface claimed, and the
+  device then needs to be physically unplugged before anything can talk to it
+  again.
+
+the light sweep is driven from your config, so it covers exactly the lights your
+config declares — every mapping's `ctrl_out_num`, plus the two bank selector
+lights. nothing about it is specific to the Nocturn.
+
+
+## device calibration
+
+older hardware wears out. the Nocturn's rotary encoders are mechanical contacts, and as they degrade they start misreading their own position and reporting ticks in the *wrong* direction, so a knob jumps backwards while you are turning it forwards. how many detents an encoder reports per rotation also varies, which decides how far you have to turn to cross a control's full range.
+
+both of those are properties of **the device in front of you**, not of what you have mapped it to. so they live in their own file rather than in a config, and are applied whichever config is loaded:
+
+```shell
+autocrap -c config/nocturn-midi.json --calibration calibration.json
+```
+
+without this separation the same corrections would have to be copied into every config, and switching config would silently change how your knobs feel.
+
+### the file
+
+```json
+{
+  "controls": {
+    "64": {
+      "step": 3,
+      "reversal_filter": {
+        "ticks_to_confirm_reversal": 6,
+        "deliberate_reversal_pause_ms": 100
+      }
+    }
+  }
+}
+```
+
+`controls` is keyed by `ctrl_in_num`, the control number the device reports, because that identifies the physical control whatever a given config happens to call it. every property is optional, and a control with no entry is left exactly as its config describes it.
+
+### `step`
+
+multiplier applied to each raw tick of a `Relative` control before accumulating. defaults to 1, the raw device behaviour.
+
+the Nocturn's encoders report one tick per detent, so a knob needs 127 detents to cross its range — far more turning than the detent spacing makes reasonable. a step of 3 crosses it in about 43.
+
+### `reversal_filter`
+
+rejects the false reversals a worn encoder reports.
+
+an individual bad tick is indistinguishable from the start of a real direction change at the moment it arrives. rather than guess, opposing ticks are held back until the new direction proves itself:
+
+- while the turn continues in its established direction, ticks pass through untouched.
+- an opposing tick is deferred rather than applied. if the original direction resumes, the deferred ticks are discarded as noise and never reach the output.
+- if `ticks_to_confirm_reversal` opposing ticks arrive in a row, the reversal is believed and every deferred tick is applied at once. **nothing is lost** — a genuine reversal costs a little latency, not travel.
+- a tick arriving more than `deliberate_reversal_pause_ms` after the previous one is always applied immediately, since contact noise arrives in an unbroken burst and never follows a pause. stopping and turning back therefore costs nothing at all.
+
+both halves are needed. a confirmation count alone cannot reject a long burst without a count so high it ruins the feel, and a time threshold alone throws away genuine reversals made mid-turn, which follow no pause.
+
+`ticks_to_confirm_reversal` should be a little longer than the longest burst your encoder produces; 6 is a reasonable starting point. **higher is not better** — beyond what your hardware needs, the added latency starts registering as jitter in its own right.
+
+### finding the right values
+
+run with `-l trace` and turn a knob steadily in one direction without letting go. every tick should be in that direction, so any tick against it is a fault. the length of those wrong-direction runs is what `ticks_to_confirm_reversal` has to exceed.
+
+this is worth doing per control: on a worn Nocturn one knob measured a 78% fault rate while another on the same device measured zero.
+
+### a note on repair
+
+a filter masks the fault; it does not fix it. contact cleaner worked into the encoder body often restores a knob completely and is worth trying first. calibration is for what remains after that.
+
+## macOS menu bar app
+
+a small front end that runs autocrap for you and shows what it is doing.
+
+```shell
+./packaging/macos/build.sh
+```
+
+that produces `Autocrap.app` in the repository root. drag it to the Dock once, and click it whenever you want autocrap running.
+
+it has no window. a glyph appears in the menu bar and its menu shows whether the device is connected, which bank you are on, and lets you switch config, open the log or quit.
+
+the glyph's **shape** shows the connection and its **colour** shows the bank, so you keep the bank reading even while the device is away:
+
+| | |
+| --- | --- |
+| solid dial | device connected |
+| hollow dial | waiting for the device |
+| red warning | autocrap is not running, or failed to start |
+
+| bank | colour |
+| --- | --- |
+| 0, or a config without banking | the menu bar's own colour |
+| 1 | orange |
+| 2 | green |
+| 3 | blue |
+
+bank 0 uses the menu bar's own colour rather than a fixed one, so it stays visible whether your menu bar is light or dark. red is reserved for the failure glyph, so no bank uses it.
+
+- **the app owns no device logic.** it starts the ordinary `autocrap` binary, reads its output and draws a menu. autocrap remains completely usable on its own from a terminal.
+- **it must stay in the repository folder**, because it finds the binary, the configs and the calibration relative to its own location. moving it elsewhere is reported rather than failing silently.
+- **the calibration is applied whichever config you pick**, so switching never changes how the hardware feels.
+- logs from both the app and autocrap are appended to `~/Library/Logs/autocrap.log`.
+
+rebuild it after changing any Rust code, and relaunch it; replacing the bundle does not affect an instance already running.
+
+### `--status`
+
+the app reads the device's state over the same flag anyone can use:
+
+```shell
+autocrap -c config/nocturn-midi.json --status
+```
+
+which prints events to stdout, while logs continue to go to stderr:
+
+```
+@autocrap config=Default
+@autocrap banks=4
+@autocrap device=connected
+@autocrap bank=2
+```
+
+each line is the sentinel `@autocrap` followed by one `key=value` pair. readers should ignore lines without the sentinel and keys they do not recognise, so that new events can be added without breaking them.
+
+
 ## building
 
 you will need:
@@ -498,6 +691,8 @@ cargo build --release
 ```
 
 this creates a stand-alone executable under `target/release` called `autocrap`, which can be placed wherever you like.
+
+to build the [macOS menu bar app](#macos-menu-bar-app) as well, run `./packaging/macos/build.sh` instead — it builds autocrap first, then wraps it. unlike the bare executable, the app has to stay in the repository folder, since it locates the binary and your configs relative to itself.
 
 ## disclaimer
 

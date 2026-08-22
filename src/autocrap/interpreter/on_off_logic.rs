@@ -198,6 +198,10 @@ impl CtrlLogic for OnOffLogic {
         Some(self.store_inbound_state(matching_bank_index, val != 0))
     }
 
+    fn build_current_indicator_write(&self) -> Option<CtrlResponse> {
+        self.build_indicator_write(self.bank_assignments[self.active_bank_index].remembered_value)
+    }
+
     fn switch_to_bank(&mut self, new_bank_index: u8) -> Vec<Response> {
         if self.bank_assignments.len() <= 1 {
             return vec![];

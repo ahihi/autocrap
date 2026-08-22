@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Autocrap</string>
+    <key>CFBundleDisplayName</key>
+    <string>Autocrap</string>
+    <key>CFBundleExecutable</key>
+    <string>Autocrap</string>
+    <key>CFBundleIdentifier</key>
+    <string>co.mattpeters.autocrap.menu</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <!-- menu bar only: the Dock icon is a pinned launcher, not a running-app tile -->
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>

@@ -1,8 +1,10 @@
+use std::time::Instant;
+
 use rosc::{OscMessage, OscType};
 
 use crate::autocrap::config::{CtrlKind, Mapping, MidiKind, RelativeMode};
 
-use super::{BankAssignment, CtrlLogic, CtrlResponse, MidiResponse, OscResponse, Response, build_bank_assignments};
+use super::{BankAssignment, CtrlLogic, CtrlResponse, MidiResponse, OscResponse, Response, ReversalFilterState, build_bank_assignments};
 
 /// An endless encoder, holding one accumulated 7-bit value per bank.
 #[derive(Debug)]
@@ -13,6 +15,8 @@ pub struct RelativeLogic {
     step: u8,
     bank_assignments: Vec<BankAssignment<u8>>,
     active_bank_index: usize,
+    reversal_filter: Option<ReversalFilterState>,
+    previous_tick_at: Option<Instant>,
 }
 
 impl RelativeLogic {
@@ -104,6 +108,8 @@ impl CtrlLogic for RelativeLogic {
             step: mapping.step.unwrap_or(1),
             bank_assignments: build_bank_assignments(mapping, bank_count, 0x00),
             active_bank_index: 0,
+            reversal_filter: mapping.reversal_filter.map(ReversalFilterState::new),
+            previous_tick_at: None,
         }))
     }
 
@@ -117,6 +123,29 @@ impl CtrlLogic for RelativeLogic {
         }
 
         let delta: i8 = if val < 0x40 { val as i8 } else { val as i8 + i8::MIN };
+
+        let delta = match self.reversal_filter {
+            Some(ref mut reversal_filter) => {
+                let arrived_at = Instant::now();
+                let millis_since_previous_tick = self.previous_tick_at.map_or(
+                    u64::MAX,
+                    |previous| arrived_at.duration_since(previous).as_millis() as u64
+                );
+                self.previous_tick_at = Some(arrived_at);
+
+                let believed_delta =
+                    reversal_filter.accept_tick(delta, millis_since_previous_tick);
+
+                if believed_delta == 0 {
+                    // handled, but held back or rejected as contact noise
+                    return Some(Response::new());
+                }
+
+                believed_delta
+            },
+            None => delta
+        };
+
         let response = match self.mode {
             RelativeMode::Raw => {
                 OscResponse {
@@ -176,6 +205,10 @@ impl CtrlLogic for RelativeLogic {
             })?;
 
         Some(self.store_inbound_value(matching_bank_index, val))
+    }
+
+    fn build_current_indicator_write(&self) -> Option<CtrlResponse> {
+        self.build_indicator_write(self.bank_assignments[self.active_bank_index].remembered_value)
     }
 
     fn switch_to_bank(&mut self, new_bank_index: u8) -> Vec<Response> {
