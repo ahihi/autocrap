@@ -1,0 +1,154 @@
+{
+  "vendor_id": 4661,
+  "product_id": 10,
+  "in_endpoint": 1,
+  "out_endpoint": 2,
+  "interface": {"Midi": {
+    "client_name": "autocrap",
+    "out_port": {"Virtual": "autocrap"},
+    "in_port": {"Virtual": "autocrap"}
+  }},
+  "mappings": [
+    {"BankSelector": {
+      "bank_count": 4,
+      "previous_bank_button": {"input_control_number": 122, "led_control_number": 122},
+      "next_bank_button": {"input_control_number": 123, "led_control_number": 123}
+    }},
+    {"Range": {
+      "count": 8,
+      "mapping": {
+        "name": "knob{i}",
+        "ctrl_in_num": 64,
+        "ctrl_out_num": 64,
+        "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
+        "step": 3,
+        "bank_midi_targets": [
+          {"channel": 0, "kind": "Cc", "num": 64},
+          {"channel": 0, "kind": "Cc", "num": 16},
+          {"channel": 0, "kind": "Cc", "num": 24},
+          {"channel": 0, "kind": "Cc", "num": 32}
+        ]
+      }
+    }},
+    {"Range": {
+      "count": 8,
+      "mapping": {
+        "name": "button{i}",
+        "ctrl_in_num": 112,
+        "ctrl_out_num": 112,
+        "ctrl_kind": {"OnOff": {"mode": "Toggle"}},
+        "bank_midi_targets": [
+          {"channel": 0, "kind": "Cc", "num": 112},
+          {"channel": 0, "kind": "Cc", "num": 82},
+          {"channel": 0, "kind": "Cc", "num": 90},
+          {"channel": 0, "kind": "Cc", "num": 98}
+        ]
+      }
+    }},
+    {"Single": {
+      "name": "button8",
+      "ctrl_in_num": 120,
+      "ctrl_out_num": 120,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 120},
+        {"channel": 0, "kind": "Cc", "num": 106},
+        {"channel": 0, "kind": "Cc", "num": 108},
+        {"channel": 0, "kind": "Cc", "num": 110}
+      ]
+    }},
+    {"Single": {
+      "name": "button9",
+      "ctrl_in_num": 121,
+      "ctrl_out_num": 121,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 121},
+        {"channel": 0, "kind": "Cc", "num": 107},
+        {"channel": 0, "kind": "Cc", "num": 109},
+        {"channel": 0, "kind": "Cc", "num": 111}
+      ]
+    }},
+    {"Single": {
+      "name": "button12",
+      "ctrl_in_num": 124,
+      "ctrl_out_num": 124,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 124},
+        {"channel": 0, "kind": "Cc", "num": 40},
+        {"channel": 0, "kind": "Cc", "num": 44},
+        {"channel": 0, "kind": "Cc", "num": 48}
+      ]
+    }},
+    {"Single": {
+      "name": "button13",
+      "ctrl_in_num": 125,
+      "ctrl_out_num": 125,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 125},
+        {"channel": 0, "kind": "Cc", "num": 41},
+        {"channel": 0, "kind": "Cc", "num": 45},
+        {"channel": 0, "kind": "Cc", "num": 49}
+      ]
+    }},
+    {"Single": {
+      "name": "button14",
+      "ctrl_in_num": 126,
+      "ctrl_out_num": 126,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 126},
+        {"channel": 0, "kind": "Cc", "num": 42},
+        {"channel": 0, "kind": "Cc", "num": 46},
+        {"channel": 0, "kind": "Cc", "num": 50}
+      ]
+    }},
+    {"Single": {
+      "name": "button15",
+      "ctrl_in_num": 127,
+      "ctrl_out_num": 127,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 127},
+        {"channel": 0, "kind": "Cc", "num": 43},
+        {"channel": 0, "kind": "Cc", "num": 47},
+        {"channel": 0, "kind": "Cc", "num": 51}
+      ]
+    }},
+    {"Single": {
+      "name": "xfader",
+      "ctrl_in_sequence": [72, 73],
+      "ctrl_kind": "EightBit",
+      "midi": {
+        "channel": 0,
+        "kind": "Cc",
+        "num": 72
+      }
+    }},
+    {"Single": {
+      "name": "speedDial",
+      "ctrl_in_num": 74,
+      "ctrl_out_num": 80,
+      "ctrl_kind": {"Relative": {"mode": "Accumulate"}},
+      "step": 3,
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 74},
+        {"channel": 0, "kind": "Cc", "num": 52},
+        {"channel": 0, "kind": "Cc", "num": 53},
+        {"channel": 0, "kind": "Cc", "num": 54}
+      ]
+    }},
+    {"Single": {
+      "name": "speedDialButton",
+      "ctrl_in_num": 81,
+      "ctrl_kind": {"OnOff": {"mode": "Momentary"}},
+      "midi": {
+        "channel": 0,
+        "kind": "Cc",
+        "num": 81
+      }
+    }}
+  ]
+}

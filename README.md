@@ -25,15 +25,30 @@ download a prebuilt binary from [Releases](https://github.com/ahihi/autocrap/rel
 > - [Linux](#linux)
 > - [Windows](#windows)
 
-autocrap requires a configuration JSON file to run. some [example configurations](config) are provided.
+autocrap requires a configuration JSON file to run. several ready-made [configurations](config) are provided, so you do not have to write one to get started:
 
-for example, to use the Nocturn as a typical MIDI controller, run:
+| file | what you get |
+| --- | --- |
+| [`nocturn-midi.json`](config/nocturn-midi.json) | the Nocturn as a typical MIDI controller. every control sends one fixed CC. |
+| [`nocturn-midi-banks.json`](config/nocturn-midi-banks.json) | the same, plus [bank switching](#bank-switching): two buttons page the knobs, buttons and speed dial through 4 banks, turning 23 controls into 92. |
+| [`nocturn-osc.json`](config/nocturn-osc.json) | every control sends an OSC message, addressed by control name. |
+| [`nocturn-osc-raw.json`](config/nocturn-osc-raw.json) | as above, but sending raw device values with no state tracking. |
+
+to use the Nocturn as a typical MIDI controller, run:
 
 ```shell
 autocrap -c config/nocturn-midi.json
 ```
 
 MIDI compatible applications on your computer should now see virtual input/output ports for autocrap!
+
+point `-c` at whichever file you want. if you launch autocrap from a script or a desktop shortcut that already names a config, it is usually easier to copy the one you want over the one that script names, for example:
+
+```shell
+cp config/nocturn-midi-banks.json config/nocturn-midi.json
+```
+
+any of these is a reasonable starting point to copy and edit. see [configuration](#configuration) for what every property means.
 
 to view the full list of supported command-line options, run `autocrap -h`:
 
@@ -88,6 +103,55 @@ due to limitations in the midir library, virtual MIDI ports are currently unsupp
 ```
 
 see also the [section on MIDI configuration](#midi).
+
+## bank switching
+
+the Nocturn gives you 8 knobs, 16 buttons, a crossfader and a speed dial. that is 27 controls, and almost any real project wants more. bank switching lets two of the buttons page the rest of the device through up to 4 alternative layouts, so the same physical knob drives a different parameter depending on which bank you are on.
+
+with the provided [`nocturn-midi-banks.json`](config/nocturn-midi-banks.json), 23 controls become 92 addressable parameters, plus 2 that stay pinned across every bank. to try it:
+
+```shell
+autocrap -c config/nocturn-midi-banks.json
+```
+
+press the two bank buttons (the third and fourth in the bottom row) and watch the knob rings and button lights change to show that bank's values.
+
+### what makes it usable
+
+paging controls is easy. paging them *without* wrecking your session is the part that takes care, so autocrap does the following:
+
+- **every bank remembers its own value.** knob 1 on bank 0 and knob 1 on bank 1 are unrelated parameters, each holding whatever you last set it to.
+- **the hardware shows you the bank you are on.** on every switch, each banked control's LED ring or button light is rewritten to that bank's value. you can see at a glance where all your parameters sit, without touching anything.
+- **switching is completely silent.** no MIDI or OSC is sent when the bank changes. your receiving application already holds the correct value for every target, and switching banks does not change any of them, it only changes which one the knob under your hand is wired to. nothing jumps, nothing is retriggered, and you can page around mid-take.
+- **you can pin controls across banks.** a control that opts out of banking is untouched by the bank counter. this is how you keep something like a master volume or a transport button in the same place on every bank.
+- **held buttons cannot get stuck.** if you are holding a momentary control when the bank changes, autocrap sends an off value for the bank you are leaving and ignores the release that follows. this matters more than it sounds: resting a finger on the Nocturn's touch-sensitive knobs while reaching for a bank button is easy to do by accident, and without this the parameter would be left stuck on with no way to clear it.
+- **the current bank is always visible**, displayed as a two-bit binary number on the two bank buttons' own LEDs.
+
+the bank always starts at 0 when autocrap launches, and is not saved between runs.
+
+### what is in the provided config
+
+[`nocturn-midi-banks.json`](config/nocturn-midi-banks.json) banks everything that has a light to show it:
+
+| control | banked? | bank 0 | bank 1 | bank 2 | bank 3 |
+| --- | --- | --- | --- | --- | --- |
+| knob 0-7 | yes | CC 64-71 | CC 16-23 | CC 24-31 | CC 32-39 |
+| button 0-7 (toggle) | yes | CC 112-119 | CC 82-89 | CC 90-97 | CC 98-105 |
+| button 8-9 | yes | CC 120-121 | CC 106-107 | CC 108-109 | CC 110-111 |
+| button 12-15 | yes | CC 124-127 | CC 40-43 | CC 44-47 | CC 48-51 |
+| speed dial | yes | CC 74 | CC 52 | CC 53 | CC 54 |
+| crossfader | no | CC 72 on every bank | | | |
+| speed dial click | no | CC 81 on every bank | | | |
+| button 10-11 | — | the bank selectors. send nothing. | | | |
+
+bank 0 keeps every control on the same CC number it uses in [`nocturn-midi.json`](config/nocturn-midi.json), so anything you have already mapped in your DAW keeps working, and the other three banks are new ground.
+
+the crossfader is not banked because it cannot be: it reports the live physical position of a slider, so there is no stored value to restore when you switch to it. the speed dial click is not banked because it has no LED, and banking a control you cannot see the state of just makes it unpredictable. both of these are deliberate, and the first is enforced when the config loads.
+
+### making your own
+
+banking is opt-in per control, and nothing about it is hardcoded to particular buttons. see [bank selector mapping](#bank-selector-mapping) for choosing the two bank buttons and the bank count, and [`bank_midi_targets`](#bank_midi_targets) / [`bank_osc_addresses`](#bank_osc_addresses) for opting individual controls in. it works the same way over OSC as over MIDI.
+
 
 ## configuration
 
@@ -281,12 +345,14 @@ specifies the MIDI message corresponding to the control.
       ],
 ```
 
-optional. specifies one MIDI message per bank, in bank order. its presence is what opts the control into [banking](#bank-selector-mapping): a control with neither this nor `bank_osc_addresses` is unaffected by the bank counter, which is how you pin a control such as a master volume knob across all banks.
+optional. one MIDI message per bank, in bank order, each in the same form as [`midi`](#midi-1). the control above sends CC 20 while bank 0 is active, CC 21 on bank 1, and so on, remembering a separate value for each.
 
-- the list length must equal `bank_count`.
-- this replaces `midi`. setting both on the same mapping is an error.
-- `EightBit` controls cannot use it, since a crossfader has no stored value to restore on a bank switch.
-- it may be used on its own. a config only needs the list matching the interface it runs.
+**the presence of this property is what opts the control into [banking](#bank-switching).** there is no separate switch to turn on. a control with neither this nor `bank_osc_addresses` is completely unaffected by the bank counter, which is how you pin a control to the same target on every bank.
+
+- the list must have exactly `bank_count` entries.
+- this **replaces** `midi`. setting both on the same mapping is an error, so that there is no precedence rule to remember.
+- `EightBit` controls cannot use it. a crossfader reports a live physical position rather than a stored value, so there would be nothing to restore when you switched to it.
+- you only need the list matching the interface you actually run. a MIDI config never needs `bank_osc_addresses`.
 
 ##### `bank_osc_addresses`
 
@@ -294,12 +360,21 @@ optional. specifies one MIDI message per bank, in bank order. its presence is wh
       "bank_osc_addresses": ["/reverb", "/pianoVolume", "/padFilter", "/delaySend"],
 ```
 
-optional. specifies one OSC address per bank, in bank order. as with `bank_midi_targets`, its presence opts the control into [banking](#bank-selector-mapping).
+optional. one OSC address per bank, in bank order. the OSC equivalent of `bank_midi_targets`, and its presence opts the control into banking in exactly the same way.
 
-- the list length must equal `bank_count`.
-- this replaces the address autocrap otherwise derives from `name`.
-- `EightBit` controls cannot use it.
-- it may be used on its own, or alongside `bank_midi_targets`.
+- the list must have exactly `bank_count` entries.
+- this **replaces** the address autocrap would otherwise derive from [`name`](#name), so the control answers to `/reverb` on bank 0 rather than to `/knob0`.
+- `EightBit` controls cannot use it, for the same reason as above.
+- it can be used on its own, or alongside `bank_midi_targets` if you want one config to serve both interfaces.
+
+##### banking and inbound messages
+
+when your application sends a value *to* autocrap, the message is matched against every bank, not just the active one.
+
+- a message addressed to the **active** bank updates the control and moves its light, exactly as an unbanked control would.
+- a message addressed to **any other** bank is stored against that bank and nothing is written to the device, because a bank you are not looking at has nothing to show. the value is waiting on the hardware the next time you switch to it.
+
+this means your application can set up all four banks at load time and have the device come up correct as you page through them.
 
 #### range mapping
 
@@ -371,38 +446,43 @@ essentially, the range mapping example above expands to:
 ```
     {"BankSelector": {
       "bank_count": 4,
-      "previous_bank_button": {"input_control_number": 126, "led_control_number": 126},
-      "next_bank_button": {"input_control_number": 127, "led_control_number": 127}
+      "previous_bank_button": {"input_control_number": 122, "led_control_number": 122},
+      "next_bank_button": {"input_control_number": 123, "led_control_number": 123}
     }},
 ```
 
-claims two of the device's buttons as bank controls. one steps back through the banks and the other steps forward, cycling a single bank counter shared by the whole device. any control that sets [`bank_midi_targets`](#bank_midi_targets) or [`bank_osc_addresses`](#bank_osc_addresses) then sends to a different target depending on which bank is active, while remembering a separate value for each one. a single knob becomes up to four logical parameters.
+claims two of the device's buttons as bank controls, and switches on [bank switching](#bank-switching) for the whole config. one button steps back through the banks and the other steps forward, both wrapping: forward from the last bank returns to bank 0, and back from bank 0 goes to the last bank.
 
-switching banks sends no MIDI and no OSC. only the device's LEDs change, since the receiving application already holds the correct value for every target from whenever that target was last sent. the counter wraps in both directions: stepping forward from the last bank returns to bank 0, and stepping back from bank 0 goes to the last bank. the bank always starts at 0 on launch, and is not persisted between runs.
+a config may contain at most one bank selector mapping. banks change when a bank button is pressed; the release does nothing.
+
+> [!IMPORTANT]
+> the two buttons you name here **stop working as ordinary controls**. they send no MIDI and no OSC, and they must not also appear as a single or range mapping. if they do, autocrap refuses to start and tells you which mapping is in the way, rather than leaving you with two buttons that half work.
+>
+> this includes collisions produced by a range mapping expanding over the number. the stock Nocturn config maps `button0` through `button15` to control numbers 112 to 127, so choosing any bank button in that span means removing or shortening the mapping that already covers it.
 
 ##### `bank_count`
 
-how many banks to cycle through. must be between 2 and 4. the ceiling is 4 because the current bank is displayed as a two-bit binary number on the two selector buttons' own LEDs, so beyond four banks there would be no way to see which bank you are on.
+how many banks to cycle through, from 2 to 4.
+
+the ceiling is 4 because the current bank is displayed as a two-bit binary number on the two bank buttons' own LEDs, and two bits only count to four. if you ask for more, autocrap refuses to start rather than leaving you unable to tell which bank you are on.
 
 ##### `previous_bank_button`, `next_bank_button`
 
-which physical buttons cycle the banks. each takes:
+which physical buttons cycle the banks, and which lights to drive. each takes:
 
-- `input_control_number`: the control number the device reports when the button is pressed.
-- `led_control_number`: the control number to write to in order to light that button.
+- `input_control_number`: the control number the device sends when that button is pressed. this is the same number you would put in `ctrl_in_num` if it were an ordinary control.
+- `led_control_number`: the control number to write to in order to light that button. on the Nocturn's grid buttons this is the same as the input number, but it is configurable because it is not the same on every control.
 
-the current bank is displayed across the two LEDs, with bit 0 on the next button and bit 1 on the previous button:
+the current bank is shown across the two lights as a binary number, with the low bit on the next button and the high bit on the previous button:
 
-| bank index | previous button LED | next button LED | reads as |
+| bank | previous button LED | next button LED | reads as |
 |---|---|---|---|
 | 0 | off | off | `00` |
 | 1 | off | on | `01` |
 | 2 | on | off | `10` |
 | 3 | on | on | `11` |
 
-**the two chosen buttons stop working as ordinary controls.** they send no MIDI and no OSC, and they must not also appear as a single or range mapping. a config where they do is rejected when it loads, including when the collision comes from a range mapping that expands over the number. in the example above, control numbers 126 and 127 are `button14` and `button15` in the stock Nocturn config, so those two mappings have to be removed before the config will load.
-
-banks change on press. the release is consumed and does nothing.
+both lights being off on bank 0 means the display is correct from the moment autocrap starts, with no extra initialisation.
 
 
 ## building
