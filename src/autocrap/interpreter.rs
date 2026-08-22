@@ -1,3 +1,4 @@
+mod bank_assignment;
 mod ctrl_logic;
 mod ctrl_response;
 mod eight_bit_logic;
@@ -8,6 +9,7 @@ mod osc_response;
 mod relative_logic;
 mod response;
 
+pub use bank_assignment::{BankAssignment, build_bank_assignments};
 pub use ctrl_logic::CtrlLogic;
 pub use ctrl_response::CtrlResponse;
 pub use eight_bit_logic::EightBitLogic;

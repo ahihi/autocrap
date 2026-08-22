@@ -81,6 +81,7 @@ fn run() -> Result<()> {
     let file = File::open(&options.config)?;
     let reader = BufReader::new(file);
     let config: Config = serde_json::from_reader(reader)?;
+    config.validate()?;
     info!("config: {:?}", config);
 
     let mut context = Context::new().unwrap();
@@ -324,33 +325,37 @@ fn run_reader<T: UsbContext>(
             let num = bytes[0];
             let val = bytes[1];
 
-            let Some(response) = interpreter.write().unwrap().handle_ctrl(num, val) else {
+            // bound to a local so the write guard drops here rather than
+            // being held across the sends below
+            let Some(responses) = interpreter.write().unwrap().handle_ctrl(num, val) else {
                 warn!("unhandled data: {:02x?}", bytes);
                 continue;
             };
 
-            if let Some((sock, out_addr)) = osc.as_ref() {
-                if let Some(OscResponse { addr, args }) = response.osc {
-                    let msg = OscPacket::Message(OscMessage {
-                        addr: addr,
-                        args: args,
-                    });
-                    debug!("send osc: {:?}", msg);
-                    let msg_buf = encoder::encode(&msg)?;
+            for response in responses {
+                if let Some((sock, out_addr)) = osc.as_ref() {
+                    if let Some(OscResponse { addr, args }) = response.osc {
+                        let msg = OscPacket::Message(OscMessage {
+                            addr: addr,
+                            args: args,
+                        });
+                        debug!("send osc: {:?}", msg);
+                        let msg_buf = encoder::encode(&msg)?;
 
-                    sock.send_to(&msg_buf, out_addr)?;
+                        sock.send_to(&msg_buf, out_addr)?;
+                    }
                 }
-            }
 
-            if let Some((_, out_conn)) = midi.as_mut() {
-                if let Some(MidiResponse { data }) = response.midi {
-                    debug!("send midi: {:02x?}", data);
-                    out_conn.send(&data)?;
+                if let Some((_, out_conn)) = midi.as_mut() {
+                    if let Some(MidiResponse { data }) = response.midi {
+                        debug!("send midi: {:02x?}", data);
+                        out_conn.send(&data)?;
+                    }
                 }
-            }
 
-            if let Some(CtrlResponse { data }) = response.ctrl {
-                ctrl_tx.send(data)?;
+                if let Some(CtrlResponse { data }) = response.ctrl {
+                    ctrl_tx.send(data)?;
+                }
             }
         }
     }

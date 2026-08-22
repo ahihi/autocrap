@@ -15,7 +15,7 @@ pub struct EightBitLogic {
 }
 
 impl CtrlLogic for EightBitLogic {
-    fn from_mapping(mapping: &Mapping) -> Option<Box<dyn CtrlLogic>> {
+    fn from_mapping(mapping: &Mapping, _bank_count: u8) -> Option<Box<dyn CtrlLogic>> {
         let CtrlKind::EightBit = mapping.ctrl_kind else {
             return None;
         };

@@ -1,53 +1,53 @@
 use rosc::{OscMessage, OscType};
 
-use crate::autocrap::config::{CtrlKind, Mapping, MidiKind, MidiSpec, RelativeMode};
+use crate::autocrap::config::{CtrlKind, Mapping, MidiKind, RelativeMode};
 
-use super::{CtrlLogic, CtrlResponse, MidiResponse, OscResponse, Response};
+use super::{BankAssignment, CtrlLogic, CtrlResponse, MidiResponse, OscResponse, Response, build_bank_assignments};
 
-/// An endless encoder, holding its accumulated 7-bit value.
+/// An endless encoder, holding one accumulated 7-bit value per bank.
 #[derive(Debug)]
 pub struct RelativeLogic {
     mode: RelativeMode,
     ctrl_in_num: Option<u8>,
     ctrl_out_num: Option<u8>,
-    midi: Option<MidiSpec>,
-    osc_addr: String,
     step: u8,
-    state: u8
+    bank_assignments: Vec<BankAssignment<u8>>,
+    active_bank_index: usize,
 }
 
 impl RelativeLogic {
-    fn update(&mut self, new_state: u8) -> Response {
-        let changed = new_state != self.state;
-        let new_encoder_led_val = Self::encoder_led_val(new_state);
-        let encoder_led_val_changed = new_encoder_led_val != Self::encoder_led_val(self.state);
-        self.state = new_state;
+    fn update(&mut self, new_value: u8) -> Response {
+        let previous_value = self.bank_assignments[self.active_bank_index].remembered_value;
+        let changed = new_value != previous_value;
+        let ring_position_changed =
+            Self::encoder_led_val(new_value) != Self::encoder_led_val(previous_value);
+        self.bank_assignments[self.active_bank_index].remembered_value = new_value;
 
         if !changed {
             return Response::new();
         }
 
-        let ctrl = if encoder_led_val_changed {
-            self.ctrl_out_num.map(|num| CtrlResponse {
-                data: vec![num, self.state]
-            })
+        let ctrl = if ring_position_changed {
+            self.build_indicator_write(new_value)
         } else {
             None
         };
 
+        let assignment = &self.bank_assignments[self.active_bank_index];
+
         Response {
             ctrl,
             osc: Some(OscResponse {
-                addr: self.osc_addr.clone(),
-                args: vec![OscType::Float(self.state as f32 / 127.0)]
+                addr: assignment.osc_address.clone(),
+                args: vec![OscType::Float(new_value as f32 / 127.0)]
             }),
-            midi: self.midi.map(|midi| {
+            midi: assignment.midi_target.map(|midi| {
                 let data = match midi.kind {
                     MidiKind::Cc => {
                         vec![
                             0b10110000 | midi.channel,
                             midi.num,
-                            self.state
+                            new_value
                         ]
                     }
                 };
@@ -56,6 +56,30 @@ impl RelativeLogic {
                 }
             })
         }
+    }
+
+    fn build_indicator_write(&self, value: u8) -> Option<CtrlResponse> {
+        self.ctrl_out_num.map(|num| CtrlResponse {
+            data: vec![num, value]
+        })
+    }
+
+    fn store_inbound_value(&mut self, matching_bank_index: usize, new_value: u8) -> Response {
+        let previous_value = self.bank_assignments[matching_bank_index].remembered_value;
+        let changed = new_value != previous_value;
+        let ring_position_changed =
+            Self::encoder_led_val(new_value) != Self::encoder_led_val(previous_value);
+        self.bank_assignments[matching_bank_index].remembered_value = new_value;
+
+        // a bank the user is not on has no visible ring; the value waits there
+        // until they switch to it
+        if !changed || !ring_position_changed || matching_bank_index != self.active_bank_index {
+            return Response::new();
+        }
+
+        let mut response = Response::new();
+        response.ctrl = self.build_indicator_write(new_value);
+        response
     }
 
     fn encoder_led_val(val: u8) -> u8 {
@@ -68,7 +92,7 @@ impl RelativeLogic {
 }
 
 impl CtrlLogic for RelativeLogic {
-    fn from_mapping(mapping: &Mapping) -> Option<Box<dyn CtrlLogic>> {
+    fn from_mapping(mapping: &Mapping, bank_count: u8) -> Option<Box<dyn CtrlLogic>> {
         let CtrlKind::Relative { mode } = mapping.ctrl_kind else {
             return None;
         };
@@ -77,10 +101,9 @@ impl CtrlLogic for RelativeLogic {
             mode: mode,
             ctrl_in_num: mapping.ctrl_in_num,
             ctrl_out_num: mapping.ctrl_out_num,
-            midi: mapping.midi,
-            osc_addr: mapping.osc_addr(),
             step: mapping.step.unwrap_or(1),
-            state: 0x00
+            bank_assignments: build_bank_assignments(mapping, bank_count, 0x00),
+            active_bank_index: 0,
         }))
     }
 
@@ -97,7 +120,7 @@ impl CtrlLogic for RelativeLogic {
         let response = match self.mode {
             RelativeMode::Raw => {
                 OscResponse {
-                    addr: self.osc_addr.clone(),
+                    addr: self.bank_assignments[self.active_bank_index].osc_address.clone(),
                     args: vec![OscType::Float(delta as f32)]
                 }.into()
             },
@@ -107,7 +130,11 @@ impl CtrlLogic for RelativeLogic {
                 // through i32 first so a large step can't wrap the i8 delta.
                 let scaled_delta = (delta as i32 * self.step as i32)
                     .clamp(i8::MIN as i32, i8::MAX as i32) as i8;
-                self.update(self.state.saturating_add_signed(scaled_delta).min(127))
+                let accumulated_value = self.bank_assignments[self.active_bank_index]
+                    .remembered_value
+                    .saturating_add_signed(scaled_delta)
+                    .min(127);
+                self.update(accumulated_value)
             }
         };
 
@@ -115,13 +142,7 @@ impl CtrlLogic for RelativeLogic {
     }
 
     fn handle_osc(&mut self, msg: &OscMessage) -> Option<Response> {
-        let Some(_num) = self.ctrl_out_num else {
-            return None;
-        };
-
-        if msg.addr != self.osc_addr {
-            return None;
-        }
+        self.ctrl_out_num?;
 
         if msg.args.len() < 1 {
             return None;
@@ -131,21 +152,14 @@ impl CtrlLogic for RelativeLogic {
             return None;
         };
 
-        let new_state = float_to_7bit(val);
+        let matching_bank_index = self.bank_assignments.iter()
+            .position(|assignment| assignment.osc_address == msg.addr)?;
 
-        let mut response = Response::new();
-        response.ctrl = self.update(new_state).ctrl;
-        Some(response)
+        Some(self.store_inbound_value(matching_bank_index, float_to_7bit(val)))
     }
 
     fn handle_midi(&mut self, msg: &[u8]) -> Option<Response> {
-        let Some(_num) = self.ctrl_out_num else {
-            return None;
-        };
-
-        let Some(midi_spec) = self.midi else {
-            return None;
-        };
+        self.ctrl_out_num?;
 
         if msg.len() != 3 {
             return None;
@@ -155,17 +169,30 @@ impl CtrlLogic for RelativeLogic {
         let num = msg[1];
         let val = msg[2];
 
-        if status != 0b10110000 | midi_spec.channel {
-            return None;
+        let matching_bank_index = self.bank_assignments.iter()
+            .position(|assignment| match assignment.midi_target {
+                Some(target) => status == (0b10110000 | target.channel) && num == target.num,
+                None => false,
+            })?;
+
+        Some(self.store_inbound_value(matching_bank_index, val))
+    }
+
+    fn switch_to_bank(&mut self, new_bank_index: u8) -> Vec<Response> {
+        if self.bank_assignments.len() <= 1 {
+            return vec![];
         }
 
-        if num != midi_spec.num {
-            return None;
-        }
+        self.active_bank_index = new_bank_index as usize;
 
-        let mut response = Response::new();
-        response.ctrl = self.update(val).ctrl;
-        Some(response)
+        // unconditional: the ring is currently displaying a different bank's value,
+        // so it must be rewritten even when the two banks happen to agree
+        let restored_value = self.bank_assignments[self.active_bank_index].remembered_value;
+        let Some(restore_write) = self.build_indicator_write(restored_value) else {
+            return vec![];
+        };
+
+        vec![restore_write.into()]
     }
 }
 

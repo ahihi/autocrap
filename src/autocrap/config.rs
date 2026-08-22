@@ -1,4 +1,6 @@
 mod abstract_mapping;
+mod bank_selector_button;
+mod bank_selector_mapping;
 mod config;
 mod ctrl_kind;
 mod interface;
@@ -10,8 +12,11 @@ mod midi_spec;
 mod on_off_mode;
 mod osc_interface;
 mod relative_mode;
+mod validation;
 
 pub use abstract_mapping::AbstractMapping;
+pub use bank_selector_button::BankSelectorButton;
+pub use bank_selector_mapping::BankSelectorMapping;
 pub use config::Config;
 pub use ctrl_kind::CtrlKind;
 pub use interface::Interface;

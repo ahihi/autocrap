@@ -186,7 +186,7 @@ IP address and port where to send and receive OSC messages.
 
 ### `mappings`
 
-a list of single mappings and/or range mappings, specifying how autocrap should translate data between the MIDI/OSC interface and the device's native format.
+a list of single mappings, range mappings and/or a bank selector mapping, specifying how autocrap should translate data between the MIDI/OSC interface and the device's native format.
 
 #### single mapping
 
@@ -247,6 +247,8 @@ sends on/off values. examples include the Nocturn's buttons, as well as the touc
 - `Momentary`: the on/off state corresponds to whether the control is pressed or released. if a `ctrl_out_num` is given, the state is also sent to the device for display.
 - `Raw`: sends out the raw pressed/released state. this only differs from `Momentary` in that the state is not automatically sent to the device for display.
 
+if a `Momentary` or `Raw` control is [banked](#bank-selector-mapping) and is physically held when the bank changes, autocrap sends an off value for the bank being left and then ignores the release that follows. without this, the parameter would be left stuck on in the receiving application with no way to clear it. this matters most for the encoder and crossfader touch sensors, since resting a finger on a knob while pressing a bank button is easy to do by accident.
+
 ###### `EightBit`
 
 ```
@@ -267,6 +269,37 @@ specifies the MIDI message corresponding to the control.
 - `channel`: the MIDI channel. numbering is zero-based (0-15) as opposed to the one-based numbering (1-16) used in some applications.
 - `kind`: the MIDI message kind. currently only `Cc` is supported.
 - `num`: the control number (0-127).
+
+##### `bank_midi_targets`
+
+```
+      "bank_midi_targets": [
+        {"channel": 0, "kind": "Cc", "num": 20},
+        {"channel": 0, "kind": "Cc", "num": 21},
+        {"channel": 0, "kind": "Cc", "num": 22},
+        {"channel": 0, "kind": "Cc", "num": 23}
+      ],
+```
+
+optional. specifies one MIDI message per bank, in bank order. its presence is what opts the control into [banking](#bank-selector-mapping): a control with neither this nor `bank_osc_addresses` is unaffected by the bank counter, which is how you pin a control such as a master volume knob across all banks.
+
+- the list length must equal `bank_count`.
+- this replaces `midi`. setting both on the same mapping is an error.
+- `EightBit` controls cannot use it, since a crossfader has no stored value to restore on a bank switch.
+- it may be used on its own. a config only needs the list matching the interface it runs.
+
+##### `bank_osc_addresses`
+
+```
+      "bank_osc_addresses": ["/reverb", "/pianoVolume", "/padFilter", "/delaySend"],
+```
+
+optional. specifies one OSC address per bank, in bank order. as with `bank_midi_targets`, its presence opts the control into [banking](#bank-selector-mapping).
+
+- the list length must equal `bank_count`.
+- this replaces the address autocrap otherwise derives from `name`.
+- `EightBit` controls cannot use it.
+- it may be used on its own, or alongside `bank_midi_targets`.
 
 #### range mapping
 
@@ -291,6 +324,8 @@ this is a shorthand for defining a sequence of similar mappings. `count` specifi
 
 - in the `name` property, the string `{i}` is replaced with the index of the element.
 - in `ctrl_in_num`, `ctrl_out_num` and `midi`→`num`, the index of the element is added to the number.
+- in each entry of `bank_midi_targets`, the index of the element is added to `num`. a range of 8 knobs with bank targets `[20, 40, 60, 80]` expands to `knob0` sending on `[20, 40, 60, 80]`, `knob1` on `[21, 41, 61, 81]`, and so on through `knob7` on `[27, 47, 67, 87]`.
+- in each entry of `bank_osc_addresses`, the string `{i}` is replaced with the index of the element, exactly as in `name`. offsetting an address by a number would be meaningless, so addresses like `"/bank0/knob{i}"` are used instead.
 
 essentially, the range mapping example above expands to:
 
@@ -330,6 +365,45 @@ essentially, the range mapping example above expands to:
         }
     }},
 ```
+
+#### bank selector mapping
+
+```
+    {"BankSelector": {
+      "bank_count": 4,
+      "previous_bank_button": {"input_control_number": 126, "led_control_number": 126},
+      "next_bank_button": {"input_control_number": 127, "led_control_number": 127}
+    }},
+```
+
+claims two of the device's buttons as bank controls. one steps back through the banks and the other steps forward, cycling a single bank counter shared by the whole device. any control that sets [`bank_midi_targets`](#bank_midi_targets) or [`bank_osc_addresses`](#bank_osc_addresses) then sends to a different target depending on which bank is active, while remembering a separate value for each one. a single knob becomes up to four logical parameters.
+
+switching banks sends no MIDI and no OSC. only the device's LEDs change, since the receiving application already holds the correct value for every target from whenever that target was last sent. the counter wraps in both directions: stepping forward from the last bank returns to bank 0, and stepping back from bank 0 goes to the last bank. the bank always starts at 0 on launch, and is not persisted between runs.
+
+##### `bank_count`
+
+how many banks to cycle through. must be between 2 and 4. the ceiling is 4 because the current bank is displayed as a two-bit binary number on the two selector buttons' own LEDs, so beyond four banks there would be no way to see which bank you are on.
+
+##### `previous_bank_button`, `next_bank_button`
+
+which physical buttons cycle the banks. each takes:
+
+- `input_control_number`: the control number the device reports when the button is pressed.
+- `led_control_number`: the control number to write to in order to light that button.
+
+the current bank is displayed across the two LEDs, with bit 0 on the next button and bit 1 on the previous button:
+
+| bank index | previous button LED | next button LED | reads as |
+|---|---|---|---|
+| 0 | off | off | `00` |
+| 1 | off | on | `01` |
+| 2 | on | off | `10` |
+| 3 | on | on | `11` |
+
+**the two chosen buttons stop working as ordinary controls.** they send no MIDI and no OSC, and they must not also appear as a single or range mapping. a config where they do is rejected when it loads, including when the collision comes from a range mapping that expands over the number. in the example above, control numbers 126 and 127 are `button14` and `button15` in the stock Nocturn config, so those two mappings have to be removed before the config will load.
+
+banks change on press. the release is consumed and does nothing.
+
 
 ## building
 
