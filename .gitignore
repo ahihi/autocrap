@@ -1,1 +1,4 @@
 /target
+
+# built by packaging/macos/build.sh
+/Autocrap.app/

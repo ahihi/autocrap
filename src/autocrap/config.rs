@@ -1,141 +1,34 @@
-use std::{net::{SocketAddrV4}};
+mod abstract_mapping;
+mod bank_selector_button;
+mod bank_selector_mapping;
+mod config;
+mod ctrl_kind;
+mod device_calibration;
+mod interface;
+mod mapping;
+mod midi_interface;
+mod midi_kind;
+mod midi_port;
+mod midi_spec;
+mod on_off_mode;
+mod osc_interface;
+mod relative_mode;
+mod reversal_filter;
+mod validation;
 
-use serde::{Serialize, Deserialize};
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum OnOffMode {
-    Raw,
-    Momentary,
-    Toggle
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum RelativeMode {
-    Raw,
-    Accumulate
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum CtrlKind {
-    OnOff { mode: OnOffMode },
-    EightBit,
-    Relative { mode: RelativeMode },
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum MidiKind {
-    Cc,
-    // CoarseFine,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum Mode {
-    Raw,
-    Accumulate,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct MidiSpec {
-    pub channel: u8,
-    pub kind: MidiKind,
-    pub num: u8,
-}
-
-impl MidiSpec {
-    pub fn index(&self, i: u8) -> MidiSpec {
-        MidiSpec {
-            channel: self.channel,
-            kind: self.kind,
-            num: self.num + i
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Mapping {
-    pub name: String,
-    pub ctrl_in_sequence: Option<Vec<u8>>,
-    pub ctrl_in_num: Option<u8>,
-    pub ctrl_out_num: Option<u8>,
-    pub ctrl_kind: CtrlKind,
-    pub midi: Option<MidiSpec>,
-}
-
-impl Mapping {
-    pub fn index(&self, i: u8) -> Mapping {
-        Mapping {
-            name: self.name.replace("{i}", &i.to_string()),
-            ctrl_in_sequence: self.ctrl_in_sequence.as_ref().map(|s| s.iter().map(|n| n+i).collect()),
-            ctrl_in_num: self.ctrl_in_num.map(|n| n+i),
-            ctrl_out_num: self.ctrl_out_num.map(|n| n+i),
-            ctrl_kind: self.ctrl_kind,
-            midi: self.midi.map(|m| m.index(i)),
-        }
-    }
-
-    pub fn osc_addr(&self) -> String {
-        format!("/{}", self.name)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum AbstractMapping {
-    Single(Mapping),
-    Range {
-        count: u8,
-        mapping: Mapping
-    }
-}
-
-impl AbstractMapping {
-    pub fn expand_iter(&self) -> impl Iterator<Item = Mapping> {
-        let mut mappings = vec![];
-        match self {
-            AbstractMapping::Single(mapping) => mappings.push(mapping.index(0)),
-            AbstractMapping::Range { count, mapping } => {
-                for i in 0..*count {
-                    mappings.push(mapping.index(i));
-                }
-            }
-        };
-        mappings.into_iter()
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OscInterface {
-    pub host_addr: SocketAddrV4,
-    pub out_addr: SocketAddrV4,
-    pub in_addr: SocketAddrV4
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MidiPort {
-    Index(usize),
-    Name(String),
-    Virtual(String),
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MidiInterface {
-    pub client_name: String,
-    pub out_port: MidiPort,
-    pub in_port: MidiPort
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Interface {
-    Osc(OscInterface),
-    Midi(MidiInterface)
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Config {
-    pub vendor_id: u16,
-    pub product_id: u16,
-    pub in_endpoint: u8,
-    pub out_endpoint: u8,
-    pub interface: Interface,
-    pub mappings: Vec<AbstractMapping>
-}
-
+pub use abstract_mapping::AbstractMapping;
+pub use bank_selector_button::BankSelectorButton;
+pub use bank_selector_mapping::BankSelectorMapping;
+pub use config::Config;
+pub use ctrl_kind::CtrlKind;
+pub use device_calibration::{ControlCalibration, DeviceCalibration};
+pub use interface::Interface;
+pub use mapping::Mapping;
+pub use midi_interface::MidiInterface;
+pub use midi_kind::MidiKind;
+pub use midi_port::MidiPort;
+pub use midi_spec::MidiSpec;
+pub use on_off_mode::OnOffMode;
+pub use osc_interface::OscInterface;
+pub use relative_mode::RelativeMode;
+pub use reversal_filter::ReversalFilter;
